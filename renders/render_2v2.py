@@ -26,14 +26,14 @@ def _t2n(x):
 
 num_agents = 4
 render = True
-ego_policy_index = 1040
-enm_policy_index = 0
+ego_policy_index = 1
+enm_policy_index = 9
 episode_rewards = 0
-ego_run_dir = "/home/lqh/jyh/CloseAirCombat/scripts/results/MultipleCombat/2v2/NoWeapon/HierarchySelfplay/mappo/artillery_check/wandb/latest-run/files"
-enm_run_dir = "/home/lqh/jyh/CloseAirCombat/scripts/results/MultipleCombat/2v2/NoWeapon/HierarchySelfplay/mappo/artillery_check/wandb/latest-run/files"
+ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/HierarchySelfplay/mappo/v1/wandb/run-20250416_185206-2uozqjr6/files"
+enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/HierarchySelfplay/mappo/v1/wandb/run-20250416_185206-2uozqjr6/files"
 experiment_name = ego_run_dir.split('/')[-4]
 
-env = MultipleCombatEnv("2v2/NoWeapon/HierarchySelfplay")
+env = MultipleCombatEnv("2v2/ShootMissile/HierarchySelfplay")
 env.seed(0)
 args = Args()
 
