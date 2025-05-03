@@ -5,3 +5,6 @@ from .relative_altitude_reward import RelativeAltitudeReward
 from .heading_reward import HeadingReward
 from .missile_posture_reward import MissilePostureReward
 from .shoot_penalty_reward import ShootPenaltyReward
+from .attack_window_reward import AttackWindowReward
+from .dogde_attack_window_reward import DogdeAttackWindowReward
+from .compute_closeness_reward import ComputeClosenessReward

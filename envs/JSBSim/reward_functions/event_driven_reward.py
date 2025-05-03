@@ -27,8 +27,8 @@ class EventDrivenReward(BaseRewardFunction):
         if env.agents[agent_id].is_shotdown:
             reward -= 200
         elif env.agents[agent_id].is_crash:
-            reward -= 200
+            reward -= 500
         for missile in env.agents[agent_id].launch_missiles:
             if missile.is_success:
-                reward += 200
+                reward += 300
         return self._process(reward, agent_id)
