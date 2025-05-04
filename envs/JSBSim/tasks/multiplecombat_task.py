@@ -7,7 +7,7 @@ from ..tasks import SingleCombatTask
 from ..core.catalog import Catalog as c
 from ..core.simulatior import MissileSimulator
 from ..reward_functions import AltitudeReward, PostureReward, EventDrivenReward, MissilePostureReward, \
-    AttackWindowReward, DogdeAttackWindowReward, ComputeClosenessReward
+    AttackWindowReward, DogdeAttackWindowReward, ComputeClosenessReward, FriendlyRangeReward
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout, SafeReturn, FriendlySeparationUnsafe
 from ..utils.utils import get_AO_TA_R, LLA2NEU, get_root_dir
 from ..model.baseline_actor import BaselineActor
@@ -185,11 +185,8 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         self.reward_functions = [
             AttackWindowReward(self.config),
             DogdeAttackWindowReward(self.config),
-            ComputeClosenessReward(self.config)
-            # PostureReward(self.config),
-            # MissilePostureReward(self.config),
-            # AltitudeReward(self.config),
-            # EventDrivenReward(self.config)
+            ComputeClosenessReward(self.config),
+            FriendlyRangeReward(self.config),
         ]
     
     def load_observation_space(self):

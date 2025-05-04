@@ -1,3 +1,6 @@
+import datetime
+import os
+
 import numpy as np
 import torch
 from envs.JSBSim.envs import SingleCombatEnv, SingleControlEnv, MultipleCombatEnv
@@ -26,15 +29,18 @@ def _t2n(x):
 
 num_agents = 4
 render = True
-ego_policy_index = 1
-enm_policy_index = 9
+ego_policy_index = 10
+enm_policy_index = 4
 episode_rewards = 0
-ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/HierarchySelfplay/mappo/v1/wandb/run-20250416_185206-2uozqjr6/files"
-enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/HierarchySelfplay/mappo/v1/wandb/run-20250416_185206-2uozqjr6/files"
+ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250503_222815-lhwrrv0y/files"
+enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250503_232353-sh7wurj7/files"
 experiment_name = ego_run_dir.split('/')[-4]
 
-env = MultipleCombatEnv("2v2/ShootMissile/HierarchySelfplay")
+env = MultipleCombatEnv("2v2/ShootMissile/MyHierarchySelfplay")
 env.seed(0)
+timestamp_str = datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+experiment_name += timestamp_str
+
 args = Args()
 
 ego_policy = PPOActor(args, env.observation_space, env.action_space, device=torch.device("cuda"))

@@ -13,7 +13,7 @@ class FriendlySeparationUnsafe(BaseTerminationCondition):
 
     def __init__(self, config):
         super().__init__(config)
-        self.friendly_separation_unsafe = getattr(config, 'friendly_separation_unsafe', 500)  # unit: m
+        self.friendly_separation_unsafe = getattr(config, 'friendly_separation_unsafe', 50)  # unit: m
 
     #目前仅能用于2v2
     def get_termination(self, task, env, agent_id, info={}):

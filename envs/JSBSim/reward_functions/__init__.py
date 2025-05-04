@@ -8,3 +8,4 @@ from .shoot_penalty_reward import ShootPenaltyReward
 from .attack_window_reward import AttackWindowReward
 from .dogde_attack_window_reward import DogdeAttackWindowReward
 from .compute_closeness_reward import ComputeClosenessReward
+from .friendly_range_reward import FriendlyRangeReward

@@ -52,8 +52,8 @@ class MultipleCombatEnv(BaseEnv):
         red_base_lon_deg = 120.0
         red_base_lat_deg = 60.0
         inner_radius_km = 5.0  # 队伍内部散布半径
-        min_base_separation_km = 20.0  # 队伍基地最小间距
-        max_base_separation_km = 100.0  # (可选) 队伍基地最大间距，增加随机性
+        min_base_separation_km = 10.0  # 队伍基地最小间距
+        max_base_separation_km = 40.0  # (可选) 队伍基地最大间距，增加随机性
 
         # --- 计算红队纬度处的经度换算因子 ---
         # 注意：math.cos() 需要弧度
@@ -116,7 +116,6 @@ class MultipleCombatEnv(BaseEnv):
                 })
 
         self._tempsims.clear()
-
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
