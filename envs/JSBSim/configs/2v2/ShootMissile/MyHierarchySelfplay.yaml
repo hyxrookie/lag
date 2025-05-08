@@ -44,7 +44,7 @@ aircraft_configs: {
     init_state: {
       ic_h_sl_ft: 20000,
       ic_long_gc_deg: 120.0,
-      ic_lat_geod_deg: 60.3,
+      ic_lat_geod_deg: 60.2,
       ic_psi_true_deg: 180.0,
       ic_u_fps: 800.0,
     },
@@ -56,7 +56,7 @@ aircraft_configs: {
     init_state: {
       ic_h_sl_ft: 20000,
       ic_long_gc_deg: 120.01,
-      ic_lat_geod_deg: 60.3,
+      ic_lat_geod_deg: 60.2,
       ic_psi_true_deg: 180.0,
       ic_u_fps: 800.0,
     },
@@ -64,7 +64,7 @@ aircraft_configs: {
   }
 }
 max_attack_angle: 45        # unit: degree
-max_attack_distance: 34000  # unit: m
+max_attack_distance: 14000  # unit: m
 min_attack_interval: 125     # unit: step
 
 # (lontitude, latitude, altitude)
@@ -82,10 +82,10 @@ AltitudeReward_Kv: 0.2
 
 
 ##自己加的
-max_missile_attack_distance: 40000
-min_missile_attack_distance: 20000
+max_missile_attack_distance: 20000
+min_missile_attack_distance: 4000
 max_missile_attack_angle: 40
 
 friendly_separation_unsafe: 50
 
-optimal_combat_range: 40000
+optimal_combat_range: 22000

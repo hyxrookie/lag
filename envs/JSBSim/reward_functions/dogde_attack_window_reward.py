@@ -21,17 +21,20 @@ class DogdeAttackWindowReward(BaseRewardFunction):
         for enm in env.agents[agent_id].enemies:
             enm_feature = np.hstack([enm.get_position(),
                                      enm.get_velocity()])
-            AO, _, R = get_AO_TA_R(ego_feature, enm_feature)
-            enm_AO = math.radians(180) - AO
+            AO, TA, R = get_AO_TA_R(ego_feature, enm_feature)
+            enm_AO = math.radians(180) - TA
+            # print(f'AO;{AO}, TA : {TA} self.max_missile_attack_angle :{self.max_missile_attack_angle}, enmAO : {enm_AO}, R : {R}')
             if self.isAttacked(enm_AO, R):
                 enm_attack.add(enm.uid)
 
         if len(enm_attack) > 1:
-            new_reward -= 10
+            new_reward -= 15
         elif len(enm_attack) == 1:
-            new_reward -= 5
-        return self._process(new_reward, agent_id)
+            new_reward -= 7.5
+        # print(f'DogdeAttackWindowReward{new_reward}')
+        return new_reward
+        # return self._process(new_reward, agent_id)
 
     def isAttacked(self, AO, R):
-        return AO < self.max_missile_attack_angle and self.min_missile_attack_distance < R < self.max_missile_attack_distance
+        return abs(AO) < self.max_missile_attack_angle and self.min_missile_attack_distance < R < self.max_missile_attack_distance
 

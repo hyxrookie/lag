@@ -29,11 +29,11 @@ def _t2n(x):
 
 num_agents = 4
 render = True
-ego_policy_index = 10
-enm_policy_index = 4
+ego_policy_index = 240
+enm_policy_index = 907
 episode_rewards = 0
-ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250503_222815-lhwrrv0y/files"
-enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250503_232353-sh7wurj7/files"
+ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250508_080520-54h9aorx/files"
+enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250508_080520-54h9aorx/files"
 experiment_name = ego_run_dir.split('/')[-4]
 
 env = MultipleCombatEnv("2v2/ShootMissile/MyHierarchySelfplay")

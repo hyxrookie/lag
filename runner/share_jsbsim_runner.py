@@ -60,7 +60,7 @@ class ShareJSBSimRunner(Runner):
 
             logging.info("\n Load selfplay opponents: Algo {}, num_opponents {}.\n"
                          .format(self.all_args.selfplay_algorithm, self.all_args.n_choose_opponents))
-
+        # print("sdsadmodel_dir" + self.model_dir)
         if self.model_dir is not None:
             self.restore()
 

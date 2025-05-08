@@ -187,6 +187,10 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             DogdeAttackWindowReward(self.config),
             ComputeClosenessReward(self.config),
             FriendlyRangeReward(self.config),
+            EventDrivenReward(self.config),
+            MissilePostureReward(self.config),
+            AltitudeReward(self.config),
+
         ]
     
     def load_observation_space(self):

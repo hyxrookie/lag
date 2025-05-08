@@ -20,12 +20,13 @@ class FriendlyRangeReward(BaseRewardFunction):
             partner_feature = np.hstack([partner.get_position(),
                                          partner.get_velocity()])
             AO, _, R = get_AO_TA_R(ego_feature, partner_feature)
-            if 5000 < R > 10000:
-                new_reward -= 5
+            if 5000 < R < 10000:
+                new_reward -= 1
             elif R > 10000:
                 new_reward -= 10
 
-        return self._process(new_reward, agent_id)
+        return new_reward
+        # return self._process(new_reward, agent_id)
 
 
 

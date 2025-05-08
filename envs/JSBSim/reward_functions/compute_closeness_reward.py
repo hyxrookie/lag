@@ -20,17 +20,20 @@ class ComputeClosenessReward(BaseRewardFunction):
             enm_feature = np.hstack([enm.get_position(),
                                      enm.get_velocity()])
             AO, _, R = get_AO_TA_R(ego_feature, enm_feature)
-            if R < self.optimal_combat_range:
+            if 2000 < R < self.optimal_combat_range:
                 ego_range.add(enm.uid)
+            if R < 2000:
+                new_reward -= 20
 
         if len(ego_range) > 1:
-            new_reward += 3
+            new_reward += 4
         elif len(ego_range) == 1:
-            new_reward += 1
+            new_reward += 2
         else:
-            new_reward -= 10
+            new_reward -= 5
 
-        return self._process(new_reward, agent_id)
+        return new_reward
+        # return self._process(new_reward, agent_id)
 
 
 

@@ -26,6 +26,7 @@ class AttackWindowReward(BaseRewardFunction):
             if self.isAttacked(AO, R):
                 ego_attack.add(enm.uid)
 
+
         if len(ego_attack) > 1:
             new_reward += 10
         elif len(ego_attack) == 1:
@@ -42,11 +43,14 @@ class AttackWindowReward(BaseRewardFunction):
                     partner_attack.add(enm.uid)
 
         if len(partner_attack) > 1:
-            new_reward += 7
-        elif len(partner_attack) == 1:
             new_reward += 3
-        return self._process(new_reward, agent_id)
+        elif len(partner_attack) == 1:
+            new_reward += 1.5
+
+        # print(f'AttackWindowReward{new_reward}')
+        return new_reward
+        # return self._process(new_reward, agent_id)
 
     def isAttacked(self, AO, R):
-        return AO < self.max_missile_attack_angle and self.min_missile_attack_distance < R < self.max_missile_attack_distance
+        return abs(AO) < self.max_missile_attack_angle and self.min_missile_attack_distance < R < self.max_missile_attack_distance
 
