@@ -17,6 +17,8 @@ class FriendlyRangeReward(BaseRewardFunction):
         ego_feature = np.hstack([env.agents[agent_id].get_position(),
                                  env.agents[agent_id].get_velocity()])
         for partner in env.agents[agent_id].partners:
+            if not partner.is_alive:
+                continue
             partner_feature = np.hstack([partner.get_position(),
                                          partner.get_velocity()])
             AO, _, R = get_AO_TA_R(ego_feature, partner_feature)

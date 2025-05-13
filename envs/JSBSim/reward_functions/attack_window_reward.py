@@ -20,6 +20,8 @@ class AttackWindowReward(BaseRewardFunction):
         ego_feature = np.hstack([env.agents[agent_id].get_position(),
                                  env.agents[agent_id].get_velocity()])
         for enm in env.agents[agent_id].enemies:
+            if not enm.is_alive:
+                continue
             enm_feature = np.hstack([enm.get_position(),
                                      enm.get_velocity()])
             AO, _, R = get_AO_TA_R(ego_feature, enm_feature)
@@ -33,6 +35,8 @@ class AttackWindowReward(BaseRewardFunction):
             new_reward += 5
 
         for partner in env.agents[agent_id].partners:
+            if not partner.is_alive:
+                continue
             partner_feature = np.hstack([partner.get_position(),
                                      partner.get_velocity()])
             for enm in partner.enemies:

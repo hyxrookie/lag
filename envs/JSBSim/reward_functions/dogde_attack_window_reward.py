@@ -19,6 +19,8 @@ class DogdeAttackWindowReward(BaseRewardFunction):
         ego_feature = np.hstack([env.agents[agent_id].get_position(),
                                  env.agents[agent_id].get_velocity()])
         for enm in env.agents[agent_id].enemies:
+            if not enm.is_alive:
+                continue
             enm_feature = np.hstack([enm.get_position(),
                                      enm.get_velocity()])
             AO, TA, R = get_AO_TA_R(ego_feature, enm_feature)

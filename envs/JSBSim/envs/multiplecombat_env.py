@@ -116,7 +116,11 @@ class MultipleCombatEnv(BaseEnv):
                 })
 
         self._tempsims.clear()
-
+    # def reset_simulators(self):
+    #     # Assign new initial condition here!
+    #     for sim in self._jsbsims.values():
+    #         sim.reload()
+    #     self._tempsims.clear()
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
