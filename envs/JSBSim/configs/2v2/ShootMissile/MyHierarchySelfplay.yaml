@@ -84,8 +84,8 @@ AltitudeReward_Kv: 0.2
 ##自己加的
 max_missile_attack_distance: 20000
 min_missile_attack_distance: 4000
-max_missile_attack_angle: 40
+max_missile_attack_angle: 45
 
 friendly_separation_unsafe: 50
 
-optimal_combat_range: 22000
+optimal_combat_range: 20000

@@ -48,8 +48,7 @@ class AttackWindowReward(BaseRewardFunction):
             new_reward += 1.5
 
         # print(f'AttackWindowReward{new_reward}')
-        return new_reward
-        # return self._process(new_reward, agent_id)
+        return self._process(new_reward, agent_id)
 
     def isAttacked(self, AO, R):
         return abs(AO) < self.max_missile_attack_angle and self.min_missile_attack_distance < R < self.max_missile_attack_distance

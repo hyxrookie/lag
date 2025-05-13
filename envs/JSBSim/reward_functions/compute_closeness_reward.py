@@ -32,8 +32,7 @@ class ComputeClosenessReward(BaseRewardFunction):
         else:
             new_reward -= 5
 
-        return new_reward
-        # return self._process(new_reward, agent_id)
+        return self._process(new_reward, agent_id)
 
 
 

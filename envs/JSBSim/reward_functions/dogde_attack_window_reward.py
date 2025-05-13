@@ -28,12 +28,11 @@ class DogdeAttackWindowReward(BaseRewardFunction):
                 enm_attack.add(enm.uid)
 
         if len(enm_attack) > 1:
-            new_reward -= 15
+            new_reward -= 20
         elif len(enm_attack) == 1:
-            new_reward -= 7.5
+            new_reward -= 10
         # print(f'DogdeAttackWindowReward{new_reward}')
-        return new_reward
-        # return self._process(new_reward, agent_id)
+        return self._process(new_reward, agent_id)
 
     def isAttacked(self, AO, R):
         return abs(AO) < self.max_missile_attack_angle and self.min_missile_attack_distance < R < self.max_missile_attack_distance

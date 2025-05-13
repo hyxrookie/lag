@@ -42,5 +42,6 @@ class MissilePostureReward(BaseRewardFunction):
         else:
             self.previous_missile_v = None
             reward = 0
+        # print(f'Missile reward: {reward}')
         self.reward_trajectory[agent_id].append([reward])
         return reward

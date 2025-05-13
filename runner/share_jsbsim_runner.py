@@ -62,6 +62,7 @@ class ShareJSBSimRunner(Runner):
                          .format(self.all_args.selfplay_algorithm, self.all_args.n_choose_opponents))
         # print("sdsadmodel_dir" + self.model_dir)
         if self.model_dir is not None:
+            print(f'self.model_dir: {self.model_dir}')
             self.restore()
 
     def run(self):
