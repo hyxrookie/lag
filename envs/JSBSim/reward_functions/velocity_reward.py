@@ -13,7 +13,6 @@ class VelocityReward(BaseRewardFunction):
     def get_reward(self, task, env, agent_id):
         new_reward = 0
         v = np.linalg.norm(env.agents[agent_id].get_velocity())
-        print(f"velocity{v}")
         if  v<= 150:
             new_reward -= 20
 
