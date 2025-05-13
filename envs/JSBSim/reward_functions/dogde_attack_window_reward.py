@@ -28,9 +28,9 @@ class DogdeAttackWindowReward(BaseRewardFunction):
                 enm_attack.add(enm.uid)
 
         if len(enm_attack) > 1:
-            new_reward -= 20
+            new_reward -= 15
         elif len(enm_attack) == 1:
-            new_reward -= 10
+            new_reward -= 7.5
         # print(f'DogdeAttackWindowReward{new_reward}')
         return self._process(new_reward, agent_id)
 
