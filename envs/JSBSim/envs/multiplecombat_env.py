@@ -42,7 +42,11 @@ class MultipleCombatEnv(BaseEnv):
         share_obs = self.get_state()
         return self._pack(obs), self._pack(share_obs)
 
+
     def reset_simulators(self):
+        # self.normal_reset_simulators()
+        self.random_reset_simulators()
+    def random_reset_simulators(self):
         # --- 常量定义 ---
         KM_PER_DEG_LAT = 111.132  # 每度纬度对应的公里数 (近似值)
         KM_PER_DEG_LON_AT_EQ = 111.320  # 赤道上每度经度对应的公里数 (近似值)
@@ -116,11 +120,11 @@ class MultipleCombatEnv(BaseEnv):
                 })
 
         self._tempsims.clear()
-    # def reset_simulators(self):
-    #     # Assign new initial condition here!
-    #     for sim in self._jsbsims.values():
-    #         sim.reload()
-    #     self._tempsims.clear()
+    def normal_reset_simulators(self):
+        # Assign new initial condition here!
+        for sim in self._jsbsims.values():
+            sim.reload()
+        self._tempsims.clear()
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`

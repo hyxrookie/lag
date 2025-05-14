@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from gymnasium import spaces
 from typing import Tuple
@@ -273,7 +275,10 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         for agent_id, agent in env.agents.items():
             # [RL-based missile launch with limited condition]
             # Determine whether can launch missile at the nearest enemy aircraft
-            target_list = list(map(lambda x: x.get_position() - agent.get_position(), agent.enemies))
+            alive_enemies = list(filter(lambda x: x.is_alive, agent.enemies))
+            if len(alive_enemies) == 0:
+                return
+            target_list = [x.get_position() - agent.get_position() for x in alive_enemies]
             target_distance = list(map(np.linalg.norm, target_list))
             target_index = np.argmin(target_distance)
             target = target_list[target_index]
@@ -287,6 +292,6 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             if shoot_flag:
                 new_missile_uid = agent_id + str(self._remaining_missiles[agent_id])
                 env.add_temp_simulator(
-                    MissileSimulator.create(parent=agent, target=agent.enemies[target_index], uid=new_missile_uid))
+                    MissileSimulator.create(parent=agent, target=alive_enemies[target_index], uid=new_missile_uid))
                 self._remaining_missiles[agent_id] -= 1
                 self._last_shoot_time[agent_id] = env.current_step
