@@ -27,6 +27,10 @@ class FriendlyRangeReward(BaseRewardFunction):
             elif R > 8000:
                 new_reward -=20
 
+        alive_enemies = list(filter(lambda x: x.is_alive, env.agents[agent_id].enemies))
+        #如果被锁定了，这时应该优先考虑躲避
+        if len(alive_enemies) > 0:
+            new_reward = 0.1 * new_reward
 
         return self._process(new_reward, agent_id)
 

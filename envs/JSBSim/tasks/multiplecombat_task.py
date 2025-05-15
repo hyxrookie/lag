@@ -9,7 +9,8 @@ from ..tasks import SingleCombatTask
 from ..core.catalog import Catalog as c
 from ..core.simulatior import MissileSimulator
 from ..reward_functions import AltitudeReward, PostureReward, EventDrivenReward, MissilePostureReward, \
-    AttackWindowReward, DogdeAttackWindowReward, ComputeClosenessReward, FriendlyRangeReward, VelocityReward
+    AttackWindowReward, DogdeAttackWindowReward, ComputeClosenessReward, FriendlyRangeReward, VelocityReward, \
+    MissileDodgeReward
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout, SafeReturn, FriendlySeparationUnsafe
 from ..utils.utils import get_AO_TA_R, LLA2NEU, get_root_dir
 from ..model.baseline_actor import BaselineActor
@@ -190,7 +191,7 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             FriendlyRangeReward(self.config),
             EventDrivenReward(self.config),
             VelocityReward(self.config),
-            AltitudeReward(self.config),
+            MissileDodgeReward(self.config),
 
         ]
     
@@ -287,8 +288,11 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             attack_angle = np.rad2deg(np.arccos(np.clip(np.sum(target * heading) / (distance * np.linalg.norm(heading) + 1e-8), -1, 1)))
             shoot_interval = env.current_step - self._last_shoot_time[agent_id]
 
+            agent_v = np.linalg.norm(agent.get_velocity())
+
             shoot_flag = agent.is_alive and self._shoot_action[agent_id] and self._remaining_missiles[agent_id] > 0 \
-                and attack_angle <= self.max_attack_angle and distance <= self.max_attack_distance and shoot_interval >= self.min_attack_interval
+                and attack_angle <= self.max_attack_angle and distance <= self.max_attack_distance and shoot_interval >= self.min_attack_interval \
+                and agent_v > 150
             if shoot_flag:
                 new_missile_uid = agent_id + str(self._remaining_missiles[agent_id])
                 env.add_temp_simulator(

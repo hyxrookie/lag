@@ -325,6 +325,12 @@ class AircraftSimulator(BaseSimulator):
             if missile.is_alive:
                 return missile
         return None
+    def check_all_missile_warning(self):
+        missiles = []
+        for missile in self.under_missiles:
+            if missile.is_alive:
+                missiles.append(missile)
+        return missiles
 
 
 class MissileSimulator(BaseSimulator):
