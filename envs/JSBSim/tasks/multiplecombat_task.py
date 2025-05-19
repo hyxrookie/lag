@@ -235,28 +235,28 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             offset += 6
         norm_obs = np.clip(norm_obs, self.observation_space.low, self.observation_space.high)
         # (3) missile info TODO: multiple missile and parnter's missile?
-        missile_sim = env.agents[agent_id].check_missile_warning() #
-        if missile_sim is not None:
-            missile_feature = np.concatenate((missile_sim.get_position(), missile_sim.get_velocity()))
-            ego_AO, ego_TA, R, side_flag = get_AO_TA_R(ego_feature, missile_feature, return_side=True)
-            norm_obs[offset + 1] = (np.linalg.norm(missile_sim.get_velocity()) - ego_state[9]) / 340
-            norm_obs[offset + 2] = (missile_feature[2] - ego_state[2]) / 1000
-            norm_obs[offset + 3] = ego_AO
-            norm_obs[offset + 4] = ego_TA
-            norm_obs[offset + 5] = R / 10000
-            norm_obs[offset + 6] = side_flag
-
-        # missile_sims = env.agents[agent_id].check_all_missile_warning
-        # for missile in missile_sims:
-        #     missile_feature = np.concatenate((missile.get_position(), missile.get_velocity()))
+        # missile_sim = env.agents[agent_id].check_missile_warning() #
+        # if missile_sim is not None:
+        #     missile_feature = np.concatenate((missile_sim.get_position(), missile_sim.get_velocity()))
         #     ego_AO, ego_TA, R, side_flag = get_AO_TA_R(ego_feature, missile_feature, return_side=True)
-        #     norm_obs[offset + 1] = (np.linalg.norm(missile.get_velocity()) - ego_state[9]) / 340
+        #     norm_obs[offset + 1] = (np.linalg.norm(missile_sim.get_velocity()) - ego_state[9]) / 340
         #     norm_obs[offset + 2] = (missile_feature[2] - ego_state[2]) / 1000
         #     norm_obs[offset + 3] = ego_AO
         #     norm_obs[offset + 4] = ego_TA
         #     norm_obs[offset + 5] = R / 10000
         #     norm_obs[offset + 6] = side_flag
-        #     offset += 6
+
+        missile_sims = env.agents[agent_id].check_all_missile_warning
+        for missile in missile_sims:
+            missile_feature = np.concatenate((missile.get_position(), missile.get_velocity()))
+            ego_AO, ego_TA, R, side_flag = get_AO_TA_R(ego_feature, missile_feature, return_side=True)
+            norm_obs[offset + 1] = (np.linalg.norm(missile.get_velocity()) - ego_state[9]) / 340
+            norm_obs[offset + 2] = (missile_feature[2] - ego_state[2]) / 1000
+            norm_obs[offset + 3] = ego_AO
+            norm_obs[offset + 4] = ego_TA
+            norm_obs[offset + 5] = R / 10000
+            norm_obs[offset + 6] = side_flag
+            offset += 6
         return norm_obs
 
     def reset(self, env):

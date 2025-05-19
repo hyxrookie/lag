@@ -25,9 +25,9 @@ class FriendlyRangeReward(BaseRewardFunction):
             if 5000 < R > 8000:
                 new_reward -= 10
             elif R > 8000:
-                new_reward -=20
+                new_reward -= 20
 
-        alive_enemies = list(filter(lambda x: x.is_alive, env.agents[agent_id].enemies))
+        alive_enemies = list(filter(lambda x: x.is_alive, env.agents[agent_id].check_all_missile_warning()))
         #如果被锁定了，这时应该优先考虑躲避
         if len(alive_enemies) > 0:
             new_reward = 0.1 * new_reward
