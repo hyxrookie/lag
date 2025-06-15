@@ -375,7 +375,7 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             # missile_obs = np.clip(missile_obs,-10, 10).reshape(1,21)
             missile_obs = missile_obs.reshape(1, 21)
             missile_actions, _, self.missile_rnn = env.missile_agent(missile_obs,self.missile_rnn, self.missile_mask, deterministic=True)
-            shoot_flag = missile_actions[0,-1]
+            shoot_action = missile_actions[0,-1]
 
             # if self.shoot_flag:
             #     new_missile_uid = agent_id + str(self.remaining_missiles[agent_id])
@@ -387,7 +387,8 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             # shoot_flag = agent.is_alive and self._shoot_action[agent_id] and self._remaining_missiles[agent_id] > 0 \
             #     and attack_angle <= self.max_attack_angle and distance <= self.max_attack_distance and shoot_interval >= self.min_attack_interval \
             #     and agent_v > 150
-            if shoot_flag:
+            if shoot_action and agent.is_alive and self._remaining_missiles[agent_id] > 0 and shoot_interval >= self.min_attack_interval \
+                    and agent_v > 150:
                 new_missile_uid = agent_id + str(self._remaining_missiles[agent_id])
                 env.add_temp_simulator(
                     MissileSimulator.create(parent=agent, target=alive_enemies[target_index], uid=new_missile_uid))
