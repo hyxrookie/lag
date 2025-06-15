@@ -16,6 +16,7 @@ class AttackWindowReward(BaseRewardFunction):
         new_reward = 0
         ego_attack = set()
         partner_attack = set()
+        pursuit = set()
         # feature: (north, east, down, vn, ve, vd)
         ego_feature = np.hstack([env.agents[agent_id].get_position(),
                                  env.agents[agent_id].get_velocity()])
@@ -24,15 +25,22 @@ class AttackWindowReward(BaseRewardFunction):
                 continue
             enm_feature = np.hstack([enm.get_position(),
                                      enm.get_velocity()])
-            AO, _, R = get_AO_TA_R(ego_feature, enm_feature)
+            AO, TA, R = get_AO_TA_R(ego_feature, enm_feature)
             if self.isAttacked(AO, R):
                 ego_attack.add(enm.uid)
+            #这个是判断尾追的，现在AO和TA用一个角度
+            if self.isAttacked(TA, R):
+                pursuit.add(enm.uid)
 
 
         if len(ego_attack) > 1:
-            new_reward += 10
+            new_reward += 4
         elif len(ego_attack) == 1:
-            new_reward += 5
+            new_reward += 2
+        if len(pursuit) > 1:
+            new_reward += 8
+        elif len(pursuit) == 1:
+            new_reward += 3
 
         for partner in env.agents[agent_id].partners:
             if not partner.is_alive:
@@ -52,9 +60,9 @@ class AttackWindowReward(BaseRewardFunction):
             new_reward += 1.5
 
 
-        alive_enemies = list(filter(lambda x: x.is_alive, env.agents[agent_id].check_all_missile_warning()))
+        alive_missile = list(filter(lambda x: x.is_alive, env.agents[agent_id].check_all_missile_warning()))
         #如果被锁定了，这时应该优先考虑躲避
-        if len(alive_enemies) > 0:
+        if len(alive_missile) > 0:
             new_reward = 0.1 * new_reward
         # print(f'AttackWindowReward{new_reward}')
         return self._process(new_reward, agent_id)

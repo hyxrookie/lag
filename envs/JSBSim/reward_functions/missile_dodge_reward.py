@@ -49,7 +49,7 @@ class MissileDodgeReward(BaseRewardFunction):
             if 60 <= relative_angle <= 110:
                 new_reward += 10
             else:
-                new_reward -= 5
+                new_reward -= 15
 
 
             missile_to_aircraft_direction = (agent.get_position() - sim.get_position()) / R

@@ -15,6 +15,7 @@ class DogdeAttackWindowReward(BaseRewardFunction):
     def get_reward(self, task, env, agent_id):
         new_reward = 0
         enm_attack = set()
+        pursuit = set()
         # feature: (north, east, down, vn, ve, vd)
         ego_feature = np.hstack([env.agents[agent_id].get_position(),
                                  env.agents[agent_id].get_velocity()])
@@ -28,16 +29,21 @@ class DogdeAttackWindowReward(BaseRewardFunction):
             # print(f'AO;{AO}, TA : {TA} self.max_missile_attack_angle :{self.max_missile_attack_angle}, enmAO : {enm_AO}, R : {R}')
             if self.isAttacked(enm_AO, R):
                 enm_attack.add(enm.uid)
+                pursuit.add(enm.uid)
 
         if len(enm_attack) > 1:
-            new_reward -= 15
+            new_reward -= 7
         elif len(enm_attack) == 1:
-            new_reward -= 7.5
+            new_reward -= 3.5
+        if len(pursuit) > 1:
+            new_reward -= 7
+        elif len(pursuit) == 1:
+            new_reward -= 3.5
         # print(f'DogdeAttackWindowReward{new_reward}')
 
-        alive_enemies = list(filter(lambda x: x.is_alive, env.agents[agent_id].check_all_missile_warning()))
+        alive_missile = list(filter(lambda x: x.is_alive, env.agents[agent_id].check_all_missile_warning()))
         #如果被锁定了，这时应该优先考虑躲避
-        if len(alive_enemies) > 0:
+        if len(alive_missile) > 0:
             new_reward = 0.1 * new_reward
 
         return self._process(new_reward, agent_id)
