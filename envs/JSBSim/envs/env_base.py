@@ -4,10 +4,36 @@ import gymnasium
 from gymnasium.utils import seeding
 import numpy as np
 from typing import Dict, Any, Tuple
+
+from algorithms.ppo.ppo_actor import PPOActor
 from ..core.simulatior import AircraftSimulator, BaseSimulator
 from ..tasks.task_base import BaseTask
 from ..utils.utils import parse_config
 
+import random
+
+import gymnasium
+import torch
+from gymnasium.utils import seeding
+import numpy as np
+from typing import Dict, Any, Tuple
+from gymnasium import spaces
+from algorithms.ppo.ppo_actor import PPOActor
+from ..utils.utils import parse_config,get_AO_TA_R,LLA2NEU
+from ..core.catalog import Catalog as c
+
+class Args:
+    def __init__(self) -> None:
+        self.gain = 0.01
+        self.hidden_size = '128 128'
+        self.act_hidden_size = '128 128'
+        self.activation_id = 1
+        self.use_feature_normalization = False
+        self.use_recurrent_policy = True
+        self.recurrent_hidden_size = 128
+        self.recurrent_hidden_layers = 1
+        self.tpdv = dict(dtype=torch.float32, device=torch.device('cpu'))
+        self.use_prior = True
 
 class BaseEnv(gymnasium.Env):
     """
@@ -30,6 +56,7 @@ class BaseEnv(gymnasium.Env):
         self.center_lon, self.center_lat, self.center_alt = \
             getattr(self.config, 'battle_field_center', (120.0, 60.0, 0.0))
         self._create_records = False
+        self.args = Args()
         self.load()
 
     @property
@@ -61,6 +88,9 @@ class BaseEnv(gymnasium.Env):
         self.task = BaseTask(self.config)
 
     def load_simulator(self):
+        self.missile_agent = PPOActor(self.args, spaces.Box(low=-10, high=10., shape=(21,)), spaces.Tuple([spaces.MultiDiscrete([3, 5, 3]), spaces.Discrete(2)]), device=torch.device("cuda"))
+        self.missile_agent.load_state_dict(torch.load("/mnt/d/MyProject/lag/envs/JSBSim/model/missile_model/missile.pt"))
+        self.missile_agent.eval()
         self._jsbsims = {}     # type: Dict[str, AircraftSimulator]
         for uid, config in self.config.aircraft_configs.items():
             self._jsbsims[uid] = AircraftSimulator(

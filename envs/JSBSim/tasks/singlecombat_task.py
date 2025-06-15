@@ -14,6 +14,11 @@ from ..model.baseline_actor import BaselineActor
 class SingleCombatTask(BaseTask):
     def __init__(self, config):
         super().__init__(config)
+        self.shoot_flag = False
+        self.R_dis = None
+        self.missile_rnn = np.zeros((1, 1, 128), dtype=np.float32)
+        self.missile_mask = np.ones((2 // 2, 1))
+
         self.use_baseline = getattr(self.config, 'use_baseline', False)
         self.use_artillery = getattr(self.config, 'use_artillery', False)
         if self.use_baseline:

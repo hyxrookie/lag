@@ -361,19 +361,33 @@ class MissileSimulator(BaseSimulator):
         self.render_explosion = False
 
         # missile parameters (for AIM-9L)
-        self._g = 9.81      # gravitational acceleration
-        self._t_max = 60    # time limitation of missile life
-        self._t_thrust = 3  # time limitation of engine
-        self._Isp = 120     # average specific impulse
-        self._Length = 2.87
-        self._Diameter = 0.127
-        self._cD = 0.4      # aerodynamic drag factor
-        self._m0 = 84       # mass, unit: kg
-        self._dm = 6        # mass loss rate, unit: kg/s
-        self._K = 3         # proportionality constant of proportional navigation
-        self._nyz_max = 30  # max overload
-        self._Rc = 300      # radius of explosion, unit: m
-        self._v_min = 150   # minimun velocity, unit: m/s
+        # self._g = 9.81      # gravitational acceleration
+        # self._t_max = 60    # time limitation of missile life
+        # self._t_thrust = 3  # time limitation of engine
+        # self._Isp = 120     # average specific impulse
+        # self._Length = 2.87
+        # self._Diameter = 0.127
+        # self._cD = 0.4      # aerodynamic drag factor
+        # self._m0 = 84       # mass, unit: kg
+        # self._dm = 6        # mass loss rate, unit: kg/s
+        # self._K = 3         # proportionality constant of proportional navigation
+        # self._nyz_max = 30  # max overload
+        # self._Rc = 300      # radius of explosion, unit: m
+        # self._v_min = 150   # minimun velocity, unit: m/s
+
+        self._g = 9.81  # grav witational acceleration 重力加速度，值为 9.81 m/s^2。
+        self._t_max = 46  # time limitation of missile life 导弹的飞行时间限制，设为 120 秒
+        self._t_thrust = 4  # time limitation of engine  导弹发动机的工作时间限制，设为 6.5 秒。
+        self._Isp = 156  # average specific impulse 比冲，即火箭发动机有效利用燃料的能力，这里设为 148  秒。这是导弹发动机性能的关键参数。
+        self._Length = 2.87  # 导弹的长度和直径，分别为 2.87 米和 0.127 米。
+        self._Diameter = 0.1
+        self._cD = 0.265  # aerodynamic drag factor 导弹的气动阻力系数，设为 0.265 。这个值影响导弹在空气中飞行时所受到的阻力。
+        self._m0 = 84  # mass, unit: kg 导弹的初始质量，设为 84 千克
+        self._dm = 6  # mass loss rate, unit: kg/s 导弹飞行过程中的质量损失率，设为每秒 6 千克。这通常是指导弹发动机燃烧燃料导致的质量减少。
+        self._K = 5  # proportionality constant of proportional navigation 比例导航中的比例常数，设为5。这个值决定了导弹制导系统的敏感度。
+        self._nyz_max = 35  # max overload 导弹能够承受的最大过载，设为 45 g。
+        self._Rc = 300  # radius of explosion, unit: m 导弹爆炸的有效半径，设为 500  米。
+        self._v_min = 150  # minimun velocity, unit: m/s  导弹的最小飞行速度，设为 150 米/秒。如果导弹速度低于此值，可能无法正常工作。
 
     @property
     def is_alive(self):
@@ -485,26 +499,65 @@ class MissileSimulator(BaseSimulator):
     def close(self):
         self.target_aircraft = None
 
+    # def _guidance(self):
+    #     """
+    #     Guidance law, proportional navigation
+    #     """
+    #     x_m, y_m, z_m = self.get_position()
+    #     dx_m, dy_m, dz_m = self.get_velocity()
+    #     v_m = np.linalg.norm([dx_m, dy_m, dz_m])
+    #     theta_m = np.arcsin(dz_m / v_m)
+    #     x_t, y_t, z_t = self.target_aircraft.get_position()
+    #     dx_t, dy_t, dz_t = self.target_aircraft.get_velocity()
+    #     Rxy = np.linalg.norm([x_m - x_t, y_m - y_t])  # distance from missile to target project to X-Y plane
+    #     Rxyz = np.linalg.norm([x_m - x_t, y_m - y_t, z_t - z_m])  # distance from missile to target
+    #     # calculate beta & eps, but no need actually...
+    #     # beta = np.arctan2(y_m - y_t, x_m - x_t)  # relative yaw
+    #     # eps = np.arctan2(z_m - z_t, np.linalg.norm([x_m - x_t, y_m - y_t]))  # relative pitch
+    #     dbeta = ((dy_t - dy_m) * (x_t - x_m) - (dx_t - dx_m) * (y_t - y_m)) / Rxy**2
+    #     deps = ((dz_t - dz_m) * Rxy**2 - (z_t - z_m) * (
+    #         (x_t - x_m) * (dx_t - dx_m) + (y_t - y_m) * (dy_t - dy_m))) / (Rxyz**2 * Rxy)
+    #     ny = self.K * v_m / self._g * np.cos(theta_m) * dbeta
+    #     nz = self.K * v_m / self._g * deps + np.cos(theta_m)
+    #     return np.clip([ny, nz], -self._nyz_max, self._nyz_max), Rxyz
     def _guidance(self):
         """
+        实现了导弹的制导逻辑
         Guidance law, proportional navigation
         """
-        x_m, y_m, z_m = self.get_position()
-        dx_m, dy_m, dz_m = self.get_velocity()
-        v_m = np.linalg.norm([dx_m, dy_m, dz_m])
-        theta_m = np.arcsin(dz_m / v_m)
-        x_t, y_t, z_t = self.target_aircraft.get_position()
-        dx_t, dy_t, dz_t = self.target_aircraft.get_velocity()
-        Rxy = np.linalg.norm([x_m - x_t, y_m - y_t])  # distance from missile to target project to X-Y plane
-        Rxyz = np.linalg.norm([x_m - x_t, y_m - y_t, z_t - z_m])  # distance from missile to target
+        x_m, y_m, z_m = self.get_position() #导弹的位置
+        dx_m, dy_m, dz_m = self.get_velocity() #导弹的速度 北东地坐标速度
+        v_m = np.linalg.norm([dx_m, dy_m, dz_m]) #导弹速度大小
+        theta_m = np.arcsin(dz_m / v_m) #导弹的飞行俯仰角，即导弹速度向量与水平面的夹角。 该水平面是指北，东速度所在的平面
+
+        x_t, y_t, z_t = self.target_aircraft.get_position()#目标位置
+        dx_t, dy_t, dz_t = self.target_aircraft.get_velocity()#目标速度
+
+        Rxy = np.linalg.norm([x_m - x_t, y_m - y_t])  # distance from missile to target project to X-Y plane 导弹到目标在水平面（X-Y平面）上的投影距离。
+        Rxyz = np.linalg.norm([x_m - x_t, y_m - y_t, z_t - z_m])  # distance from missile to target 导弹到目标的直线距离。
+
         # calculate beta & eps, but no need actually...
         # beta = np.arctan2(y_m - y_t, x_m - x_t)  # relative yaw
         # eps = np.arctan2(z_m - z_t, np.linalg.norm([x_m - x_t, y_m - y_t]))  # relative pitch
+        #水平面偏航角速度（β 的时间导数）：
+        #这个公式反映了目标相对于导弹的速度变化如何影响导弹在水平面上指向目标的角度变化。
         dbeta = ((dy_t - dy_m) * (x_t - x_m) - (dx_t - dx_m) * (y_t - y_m)) / Rxy**2
+        #垂直面俯仰角速度（ε 的时间导数）：
+        #这表示了目标在垂直方向上的相对运动如何影响导弹的俯仰角变化。
         deps = ((dz_t - dz_m) * Rxy**2 - (z_t - z_m) * (
             (x_t - x_m) * (dx_t - dx_m) + (y_t - y_m) * (dy_t - dy_m))) / (Rxyz**2 * Rxy)
+
+        # ny 和 nz 分别表示导弹在 水平方向（偏航角方向） 和 垂直方向（俯仰角方向） 上的转向加速度。
         ny = self.K * v_m / self._g * np.cos(theta_m) * dbeta
-        nz = self.K * v_m / self._g * deps + np.cos(theta_m)
+
+        # 计算高度差
+        z_diff = z_t - z_m
+        # 选择合适的k值来调整响应的灵敏度
+        k = 0.1  # 调整这个参数来控制 z_diff 对 func 的影响速度
+        # 定义func函数
+        func = 4 * np.tanh(k * z_diff)
+
+        nz = self.K * v_m / self._g * deps + np.cos(theta_m) +func
         return np.clip([ny, nz], -self._nyz_max, self._nyz_max), Rxyz
 
     def _state_trans(self, action):
