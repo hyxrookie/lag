@@ -24,7 +24,7 @@ aircraft_configs: {
       ic_psi_true_deg: 0.0,
       ic_u_fps: 800.0,
     },
-    missile: 2
+    missile: 1
   },
   A0200: {
     color: Red,
@@ -36,7 +36,7 @@ aircraft_configs: {
       ic_psi_true_deg: 0.0,
       ic_u_fps: 800.0,
     },
-    missile: 2
+    missile: 0
   },
   B0100: {
     color: Blue,
@@ -48,7 +48,7 @@ aircraft_configs: {
       ic_psi_true_deg: 180.0,
       ic_u_fps: 800.0,
     },
-    missile: 2
+    missile: 0
   },
   B0200: {
     color: Blue,
@@ -60,7 +60,7 @@ aircraft_configs: {
       ic_psi_true_deg: 180.0,
       ic_u_fps: 800.0,
     },
-    missile: 2
+    missile: 0
   }
 }
 max_attack_angle: 45        # unit: degree
