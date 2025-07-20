@@ -1,16 +1,7 @@
-import logging
-import time
-import gymnasium
-from gymnasium.utils import seeding
-import numpy as np
-from typing import Dict, Any, Tuple
 
-from algorithms.ppo.ppo_actor import PPOActor
 from ..core.simulatior import AircraftSimulator, BaseSimulator
 from ..tasks.task_base import BaseTask
-from ..utils.utils import parse_config
 
-import random
 
 import gymnasium
 import torch
@@ -19,8 +10,8 @@ import numpy as np
 from typing import Dict, Any, Tuple
 from gymnasium import spaces
 from algorithms.ppo.ppo_actor import PPOActor
-from ..utils.utils import parse_config,get_AO_TA_R,LLA2NEU
-from ..core.catalog import Catalog as c
+from ..utils.utils import parse_config
+
 
 class Args:
     def __init__(self) -> None:
@@ -89,7 +80,7 @@ class BaseEnv(gymnasium.Env):
 
     def load_simulator(self):
         self.missile_agent = PPOActor(self.args, spaces.Box(low=-10, high=10., shape=(21,)), spaces.Tuple([spaces.MultiDiscrete([3, 5, 3]), spaces.Discrete(2)]), device=torch.device("cuda"))
-        self.missile_agent.load_state_dict(torch.load("/mnt/d/MyProject/lag/envs/JSBSim/model/missile_model/missile.pt"))
+        self.missile_agent.load_state_dict(torch.load("D:/pythonProject/lag/envs/JSBSim/model/missile_model/run8/actor_595.pt"))
         self.missile_agent.eval()
         self._jsbsims = {}     # type: Dict[str, AircraftSimulator]
         for uid, config in self.config.aircraft_configs.items():

@@ -12,6 +12,7 @@ from ..reward_functions import AltitudeReward, PostureReward, EventDrivenReward,
     AttackWindowReward, DogdeAttackWindowReward, ComputeClosenessReward, FriendlyRangeReward, VelocityReward, \
     MissileDodgeReward
 from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout, SafeReturn, FriendlySeparationUnsafe
+from ..utils.shared_variable import GlobalVars
 from ..utils.utils import get_AO_TA_R, LLA2NEU, get_root_dir
 from ..model.baseline_actor import BaselineActor
 
@@ -181,7 +182,7 @@ class HierarchicalMultipleCombatTask(MultipleCombatTask):
 class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
     def __init__(self, config: str):
         super().__init__(config)
-        self.max_attack_angle = getattr(self.config, 'max_attack_angle', 180)
+        self.max_attack_angle = getattr(self.config, 'max_attack_angle', 75)
         self.max_attack_distance = getattr(self.config, 'max_attack_distance', np.inf)
         self.min_attack_interval = getattr(self.config, 'min_attack_interval', 125)
         self.reward_functions = [
@@ -284,7 +285,7 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             - [13] relative distance     (unit: 10km)
             - [14] side_flag             1 or 0 or -1
         """
-        norm_obs = np.zeros(22)
+        norm_obs = np.zeros(21)
         ego_obs_list = np.array(env.agents[agent_id].get_property_values(self.state_var))
 
         # (0) extract feature: [north(km), east(km), down(km), v_n(mh), v_e(mh), v_d(mh)]
@@ -310,19 +311,19 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         norm_obs[12] = ego_TA
         norm_obs[13] = R / 10000
         norm_obs[14] = side_flag
-        norm_obs[15] = self._remaining_missiles[agent_id]
+        # norm_obs[15] = self._remaining_missiles[agent_id]
         self.R_dis = R
         # (3) relative missile info
         missile_sim = env.agents[agent_id].check_missile_warning()
         if missile_sim is not None:
             missile_feature = np.concatenate((missile_sim.get_position(), missile_sim.get_velocity()))
             ego_AO, ego_TA, R, side_flag = get_AO_TA_R(self.ego_feature, missile_feature, return_side=True)
-            norm_obs[16] = (np.linalg.norm(missile_sim.get_velocity()) - ego_obs_list[9]) / 340
-            norm_obs[17] = (missile_feature[2] - ego_obs_list[2]) / 1000
-            norm_obs[18] = ego_AO
-            norm_obs[19] = ego_TA
-            norm_obs[20] = R / 10000
-            norm_obs[21] = side_flag
+            norm_obs[15] = (np.linalg.norm(missile_sim.get_velocity()) - ego_obs_list[9]) / 340
+            norm_obs[16] = (missile_feature[2] - ego_obs_list[2]) / 1000
+            norm_obs[17] = ego_AO
+            norm_obs[18] = ego_TA
+            norm_obs[19] = R / 10000
+            norm_obs[20] = side_flag
         return norm_obs
 
     def reset(self, env):
@@ -349,42 +350,58 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             target_distance = list(map(np.linalg.norm, target_list))
             target_index = np.argmin(target_distance)
             target = target_list[target_index]
-            heading = agent.get_velocity()
-            distance = target_distance[target_index]
-            attack_angle = np.rad2deg(np.arccos(np.clip(np.sum(target * heading) / (distance * np.linalg.norm(heading) + 1e-8), -1, 1)))
-            shoot_interval = env.current_step - self._last_shoot_time[agent_id]
 
-            agent_v = np.linalg.norm(agent.get_velocity())
+            shoot_flag = False
+
+            if GlobalVars.use_autoshoot_in_render==True and agent_id=="A0100":
+                shoot_flag = True #手动让A0100飞机发射导弹
+                GlobalVars.use_autoshoot_in_render = False#关闭手动发射，防止下一个时间步再次创建导弹
+
+            # heading = agent.get_velocity()
+            # distance = target_distance[target_index]
+            # attack_angle = np.rad2deg(np.arccos(np.clip(np.sum(target * heading) / (distance * np.linalg.norm(heading) + 1e-8), -1, 1)))
+            # shoot_interval = env.current_step - self._last_shoot_time[agent_id]
+            #
+            # agent_v = np.linalg.norm(agent.get_velocity())
 
 
             # 后来加的
-            enm_obs_list = np.array(alive_enemies[target_index].get_property_values(self.state_var))
-            missile_sim = env.agents[agent_id].check_missile_warning()
-            list_missile = np.array(env.agents[agent_id].get_property_values(self.state_var))
-            missile_obs = np.zeros(21)
-            if missile_sim is not None:
-                missile_feature = np.concatenate((missile_sim.get_position(), missile_sim.get_velocity()))
-                ego_AO, ego_TA, R, side_flag = get_AO_TA_R(self.ego_feature, missile_feature, return_side=True)
-                missile_obs[15] = (np.linalg.norm(missile_sim.get_velocity()) - list_missile[9]) / 340
-                missile_obs[16] = (missile_feature[2] - list_missile[2]) / 1000
-                missile_obs[17] = ego_AO
-                missile_obs[18] = ego_TA
-                missile_obs[19] = R / 10000
-                missile_obs[20] = side_flag
-            plane_obs = self.get_obs_missile(env, agent_id, enm_obs_list)
-            for i in range(15):
-                missile_obs[i] = plane_obs[i]
-            # missile_obs = np.clip(missile_obs,-10, 10).reshape(1,21)
-            missile_obs = missile_obs.reshape(1, 21)
-            missile_actions, _, self.missile_rnn = env.missile_agent(missile_obs,self.missile_rnn, self.missile_mask, deterministic=True)
-            shoot_action = missile_actions[0,-1]
+            # enm_obs_list = np.array(alive_enemies[target_index].get_property_values(self.state_var))
+            # missile_sim = env.agents[agent_id].check_missile_warning()
+            # list_missile = np.array(env.agents[agent_id].get_property_values(self.state_var))
+            # missile_obs = np.zeros(21)
+            # if missile_sim is not None:
+            #     missile_feature = np.concatenate((missile_sim.get_position(), missile_sim.get_velocity()))
+            #     ego_AO, ego_TA, R, side_flag = get_AO_TA_R(self.ego_feature, missile_feature, return_side=True)
+            #     missile_obs[15] = (np.linalg.norm(missile_sim.get_velocity()) - list_missile[9]) / 340
+            #     missile_obs[16] = (missile_feature[2] - list_missile[2]) / 1000
+            #     missile_obs[17] = ego_AO
+            #     missile_obs[18] = ego_TA
+            #     missile_obs[19] = R / 10000
+            #     missile_obs[20] = side_flag
+            # plane_obs = self.get_obs_missile(env, agent_id, enm_obs_list)
+            # for i in range(15):
+            #     missile_obs[i] = plane_obs[i]
+            # # missile_obs = np.clip(missile_obs,-10, 10).reshape(1,21)
+            # missile_obs = missile_obs.reshape(1, 21)
+            # missile_actions, _, self.missile_rnn = env.missile_agent(missile_obs,self.missile_rnn, self.missile_mask, deterministic=True)
+            # shoot_action = missile_actions[0,-1]
+            #
+            # # if shoot_action and agent.is_alive and self._remaining_missiles[agent_id] > 0 \
+            # #         and attack_angle <= self.max_attack_angle and shoot_interval >= self.min_attack_interval \
+            # #         and agent_v > 150 and missile_obs[0, 13] < 1.4:
+            # if shoot_action and agent.is_alive and self._remaining_missiles[agent_id] > 0 \
+            #         and attack_angle <= self.max_attack_angle and shoot_interval >= self.min_attack_interval \
+            #         and missile_obs[0, 13] < 1.4:
+            # # if shoot_action and agent.is_alive and self._remaining_missiles[agent_id] > 0 \
+            # #         and attack_angle <= self.max_attack_angle and shoot_interval >= self.min_attack_interval:
 
 
-            if shoot_action and agent.is_alive and self._remaining_missiles[agent_id] > 0 \
-                    and attack_angle <= self.max_attack_angle and shoot_interval >= self.min_attack_interval \
-                    and agent_v > 150:
+
+            # print(missile_obs)
+            if shoot_flag==True:
                 new_missile_uid = agent_id + str(self._remaining_missiles[agent_id])
                 env.add_temp_simulator(
                     MissileSimulator.create(parent=agent, target=alive_enemies[target_index], uid=new_missile_uid))
                 self._remaining_missiles[agent_id] -= 1
-                self._last_shoot_time[agent_id] = env.current_step
+                # self._last_shoot_time[agent_id] = env.current_step

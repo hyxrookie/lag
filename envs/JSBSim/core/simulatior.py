@@ -1,3 +1,4 @@
+import math
 import os
 import logging
 import numpy as np
@@ -7,6 +8,7 @@ from typing import Literal, Union, List
 
 import jsbsim
 from .catalog import Property, Catalog
+from ..utils.shared_variable import GlobalVars
 from ..utils.utils import get_root_dir, LLA2NEU, NEU2LLA
 
 TeamColors = Literal["Red", "Blue", "Green", "Violet", "Orange"]
@@ -59,6 +61,12 @@ class BaseSimulator(ABC):
     def get_velocity(self):
         """(v_north, v_east, v_up), unit: m/s"""
         return self._velocity
+
+    def get_speed(self):#获得速度标量大小
+        """Returns the scalar magnitude of the velocity, unit: m/s"""
+        v_north, v_east, v_up = self.get_velocity()
+        speed = math.sqrt(v_north**2 + v_east**2 + v_up**2)
+        return speed
 
     def reload(self):
         self._geodetic = np.zeros(3)
@@ -341,11 +349,15 @@ class MissileSimulator(BaseSimulator):
     MISS = 2
 
     @classmethod
-    def create(cls, parent: AircraftSimulator, target: AircraftSimulator, uid: str, missile_model: str = "AIM-9L"):
+    def create(cls,parent: AircraftSimulator, target: AircraftSimulator, uid: str, missile_model: str = "AIM-9L"):
         assert parent.dt == target.dt, "integration timestep must be same!"
         missile = MissileSimulator(uid, parent.color, missile_model, parent.dt)
         missile.launch(parent)
         missile.target(target)
+        # missile.launch_time = env.current_step-1
+        missile.hitFlag=0
+        missile.missFlag=0
+        missile.aliveFlag=1
         return missile
 
     def __init__(self,
@@ -390,6 +402,10 @@ class MissileSimulator(BaseSimulator):
         self._v_min = 150  # minimun velocity, unit: m/s  导弹的最小飞行速度，设为 150 米/秒。如果导弹速度低于此值，可能无法正常工作。
 
     @property
+    def is_inactive(self):
+        return self.__status == MissileSimulator.INACTIVE
+
+    @property
     def is_alive(self):
         """Missile is still flying"""
         return self.__status == MissileSimulator.LAUNCHED
@@ -404,6 +420,10 @@ class MissileSimulator(BaseSimulator):
         """Missile is already exploded"""
         return self.__status == MissileSimulator.HIT \
             or self.__status == MissileSimulator.MISS
+
+    @property
+    def is_miss(self):
+        return self.__status == MissileSimulator.MISS
 
     @property
     def Isp(self):
@@ -461,22 +481,28 @@ class MissileSimulator(BaseSimulator):
         self._distance_pre = np.inf
         self._distance_increment = deque(maxlen=int(5 / self.dt))  # 5s of distance increment -- can't hit
         self._left_t = int(1 / self.dt)  # remove missile 1s after its destroying
+        GlobalVars.shared_missile_shootpoint = True  # 代表导弹此刻发射
 
     def target(self, target: AircraftSimulator):
         self.target_aircraft = target  # TODO: change target?
         self.target_aircraft.under_missiles.append(self)
 
     def run(self):
+        GlobalVars.shared_missile_shootpoint = False  # 表明导弹此时已经开始运行，而不是刚刚发射
         self._t += self.dt
         action, distance = self._guidance()
         self._distance_increment.append(distance > self._distance_pre)
         self._distance_pre = distance
         if distance < self._Rc and self.target_aircraft.is_alive:
             self.__status = MissileSimulator.HIT
+            self.hitFlag = 1
+            self.aliveFlag=0
             self.target_aircraft.shotdown()
-        elif (self._t > self._t_max) or (np.linalg.norm(self.get_velocity()) < self._v_min) \
-                or np.sum(self._distance_increment) >= self._distance_increment.maxlen or not self.target_aircraft.is_alive:
+        elif ((self._t > self._t_max) or (np.linalg.norm(self.get_velocity()) < self._v_min) \
+                 or not self.target_aircraft.is_alive) and self.hitFlag == 0:
             self.__status = MissileSimulator.MISS
+            self.missFlag = 1
+            self.aliveFlag = 0
         else:
             self._state_trans(action)
 
