@@ -207,6 +207,6 @@ if __name__ == "__main__":
         "--data-chunk-length", "8",
         "--user-name", "lc",
         "--use-wandb", "False"
-                       "--wandb-name", "hyx-org",
+        "--wandb-name", "hyx-org",
         "--use-prior",
     ])

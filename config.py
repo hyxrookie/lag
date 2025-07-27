@@ -20,6 +20,7 @@ def get_config():
     parser = _get_log_config(parser)
     parser = _get_eval_config(parser)
     parser = _get_render_config(parser)
+    parser = _get_transformer_config(parser)
     return parser
 
 
@@ -299,6 +300,26 @@ def _get_render_config(parser: argparse.ArgumentParser):
     group.add_argument("--render-index", type=str, default='latest', help="the index of ego policy. by default latest")
     return parser
 
+
+def _get_transformer_config(parser: argparse.ArgumentParser):
+    """
+    Transformer network parameters.
+    """
+    group = parser.add_argument_group("Transformer network parameters")
+
+    group.add_argument("--use-transformer-policy", action='store_true', default=False,
+                       help="By default False, if set to True, will use a transformer layer in the policy.")
+
+    group.add_argument("--transformer-n-head", type=int, default=4,
+                       help="Number of attention heads in the transformer layer (default: 4).")
+
+    group.add_argument("--transformer-n-layer", type=int, default=2,
+                       help="Number of layers in the transformer encoder (default: 2).")
+
+    group.add_argument("--transformer-dropout", type=float, default=0.1,
+                       help="Dropout rate in the transformer layer (default: 0.1).")
+
+    return parser
 
 if __name__ == "__main__":
     parser = get_config()

@@ -173,4 +173,10 @@ def main(args):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    os.environ["WANDB_API_KEY"] = '6a672652523e208936428377d5d3bdeb74f2b0ed'  # 将引号内的*替换成自己在wandb上的key
+    os.environ["WANDB_MODE"] = "offline"
+
+    import torch
+
+    print(torch.__version__, torch.__file__)
     main(sys.argv[1:])
