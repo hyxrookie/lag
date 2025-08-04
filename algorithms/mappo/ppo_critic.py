@@ -8,6 +8,7 @@ from ..utils.mlp import MLPBase, MLPLayer
 from ..utils.gru import GRULayer
 # 新增导入
 from ..utils.transformer import CausalTransformerEncoder
+from ..utils.at import SimpleTransformer
 from ..utils.utils import check
 
 
@@ -36,7 +37,7 @@ class PPOCritic(nn.Module):
 
         # (2) NEW: transformer module
         if self.use_transformer_policy:
-            self.transformer = CausalTransformerEncoder(args, input_size, device)
+            self.transformer = SimpleTransformer(args, input_size, device)
             input_size = self.transformer.output_size
 
         # (3) rnn module
@@ -73,7 +74,7 @@ class PPOCritic(nn.Module):
 
                 critic_features = critic_features.view(T, N, -1)
 
-                padding_mask = (masks.view(T, N) == 0).transpose(0, 1).contiguous()
+                padding_mask = (masks.view(T, N) == 0).contiguous()
 
                 critic_features = self.transformer(critic_features, src_key_padding_mask=padding_mask)
 
