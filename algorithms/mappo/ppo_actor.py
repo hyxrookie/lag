@@ -7,8 +7,7 @@ import torch.nn as nn
 from ..utils.mlp import MLPBase
 from ..utils.gru import GRULayer
 # 新增导入
-from ..utils.transformer import CausalTransformerEncoder
-from ..utils.at import SimpleTransformer
+from ..utils.transformer import SimpleTransformer
 from ..utils.act import ACTLayer
 from ..utils.utils import check
 
@@ -91,12 +90,12 @@ class PPOActor(nn.Module):
             active_masks = check(active_masks).to(**self.tpdv)
 
         actor_features = self.base(obs)
-        print("actor_features shape:", actor_features.shape)
+        # print("actor_features shape:", actor_features.shape)
 
         # --- 诊断代码 ---
-        print(f"Features before Transformer: shape={actor_features.shape}")
-        print(f"  mean: {actor_features.mean().item():.4f}, std: {actor_features.std().item():.4f}")
-        print(f"  min: {actor_features.min().item():.4f}, max: {actor_features.max().item():.4f}")
+        # print(f"Features before Transformer: shape={actor_features.shape}")
+        # print(f"  mean: {actor_features.mean().item():.4f}, std: {actor_features.std().item():.4f}")
+        # print(f"  min: {actor_features.min().item():.4f}, max: {actor_features.max().item():.4f}")
         # --- 诊断结束 ---
 
         # Pass through Transformer if enabled
@@ -105,27 +104,22 @@ class PPOActor(nn.Module):
             # T = sequence length, N = batch size
             T = self.data_chunk_length
             N = actor_features.shape[0] // T
-            print("transformer T:{T}, N:{N}".format(T=T, N=actor_features.shape[0]))
+            # print("transformer T:{T}, N:{N}".format(T=T, N=actor_features.shape[0]))
 
             actor_features = actor_features.view(T, N, -1)
 
-            print("transformer actor_features shape:", actor_features.shape)
+            # print("transformer actor_features shape:", actor_features.shape)
 
             # Create padding mask from `masks`.
             # `masks` has shape (T*N, 1). A value of 0 means the state is terminal.
             # The padding mask for transformer should be (N, T) with True for padded positions.
             # We assume a 0 in `masks` means that and all subsequent steps are padding.
             padding_mask = (masks.view(T, N) == 0).contiguous()
-            print("padding_mask 全 True 行:", padding_mask.all(dim=1).nonzero(as_tuple=False).flatten())
-            if torch.any(padding_mask.all(dim=1)):
-                print("!!! 警告: 批次中存在被完全屏蔽的序列，这将导致 NaN。!!!")
-                # 打印出有问题的mask，帮助调试
-                problematic_masks = padding_mask[padding_mask.all(dim=1)]
-                print(f"有问题的Mask示例 (共 {len(problematic_masks)} 个):\n{problematic_masks}")
-            print("Before Transformer NaN?", torch.isnan(actor_features).any())
+            # print("padding_mask 全 True 行:", padding_mask.all(dim=1).nonzero(as_tuple=False).flatten())
+            # print("Before Transformer NaN?", torch.isnan(actor_features).any())
             actor_features = self.transformer(actor_features, src_key_padding_mask=padding_mask)
 
-            print(f"After Transformer: any NaN? {torch.isnan(actor_features).any()}")
+            # print(f"After Transformer: any NaN? {torch.isnan(actor_features).any()}")
 
             actor_features = actor_features.view(T * N, -1)
 
@@ -133,6 +127,6 @@ class PPOActor(nn.Module):
             actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
 
         action_log_probs, dist_entropy = self.act.evaluate_actions(actor_features, action, active_masks)
-        print(f"After GRU: any NaN? {torch.isnan(actor_features).any()}")
+        # print(f"After GRU: any NaN? {torch.isnan(actor_features).any()}")
 
         return action_log_probs, dist_entropy

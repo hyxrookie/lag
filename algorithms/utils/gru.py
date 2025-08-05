@@ -35,13 +35,13 @@ class GRULayer(nn.Module):
             # x is a (T, N, input_size) tensor that has been flatten to (T * N, -1)
             N = hxs.size(0)
             T = int(x.size(0) / N)
-            print(f"act T:{T}, N:{N}")
-            print("masks shape", masks.shape)
+            # print(f"act T:{T}, N:{N}")
+            # print("masks shape", masks.shape)
             # unflatten x and masks
             x = x.view(T, N, x.size(1))  # [T * N, input_size] => [T, N, input_size]
             masks = masks.view(T, N)     # [T * N, 1] => [T, N]
 
-            print("masks2 shape", masks.shape)
+            # print("masks2 shape", masks.shape)
 
             # Let's figure out which steps in the sequence have a zero for any agent
             # We will always assume t=0 has a zero in it as that makes the logic cleaner

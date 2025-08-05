@@ -7,8 +7,7 @@ import torch.nn as nn
 from ..utils.mlp import MLPBase, MLPLayer
 from ..utils.gru import GRULayer
 # 新增导入
-from ..utils.transformer import CausalTransformerEncoder
-from ..utils.at import SimpleTransformer
+from ..utils.transformer import SimpleTransformer
 from ..utils.utils import check
 
 
