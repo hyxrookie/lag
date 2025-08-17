@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from ..core.catalog import Catalog as c
 
 
+
 class BaseTask(ABC):
     """
     Base Task class.

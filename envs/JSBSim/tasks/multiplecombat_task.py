@@ -32,7 +32,7 @@ class MultipleCombatTask(SingleCombatTask):
 
     @property
     def num_agents(self) -> int:
-        return 4
+        return len(self.config.aircraft_configs)
 
     def load_variables(self):
         self.state_var = [
