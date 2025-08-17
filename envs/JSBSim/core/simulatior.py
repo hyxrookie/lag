@@ -447,6 +447,8 @@ class MissileSimulator(BaseSimulator):
         self.target_aircraft.under_missiles.append(self)
 
     def run(self):
+        if not self.is_alive:
+            return
         self._t += self.dt
         action, distance = self._guidance()
         self._distance_increment.append(distance > self._distance_pre)
