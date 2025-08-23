@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from gymnasium import spaces
 from typing import Tuple
@@ -6,8 +8,10 @@ import torch
 from ..tasks import SingleCombatTask
 from ..core.catalog import Catalog as c
 from ..core.simulatior import MissileSimulator
-from ..reward_functions import AltitudeReward, PostureReward, EventDrivenReward, MissilePostureReward
-from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout, SafeReturn
+from ..reward_functions import AltitudeReward, PostureReward, EventDrivenReward, MissilePostureReward, \
+    AttackWindowReward, DogdeAttackWindowReward, ComputeClosenessReward, FriendlyRangeReward, VelocityReward, \
+    MissileDodgeReward
+from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout, SafeReturn, FriendlySeparationUnsafe
 from ..utils.utils import get_AO_TA_R, LLA2NEU, get_root_dir
 from ..model.baseline_actor import BaselineActor
 
@@ -17,6 +21,7 @@ class MultipleCombatTask(SingleCombatTask):
         super().__init__(config)
 
         self.reward_functions = [
+            # AttackWindowReward(self.config)
             AltitudeReward(self.config),
             PostureReward(self.config),
             EventDrivenReward(self.config)
@@ -180,10 +185,15 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         self.max_attack_distance = getattr(self.config, 'max_attack_distance', np.inf)
         self.min_attack_interval = getattr(self.config, 'min_attack_interval', 125)
         self.reward_functions = [
-            PostureReward(self.config),
-            MissilePostureReward(self.config),
+            AttackWindowReward(self.config),
+            DogdeAttackWindowReward(self.config),
+            ComputeClosenessReward(self.config),
+            FriendlyRangeReward(self.config),
+            EventDrivenReward(self.config),
+            VelocityReward(self.config),
+            MissileDodgeReward(self.config),
             AltitudeReward(self.config),
-            EventDrivenReward(self.config)
+
         ]
     
     def load_observation_space(self):
@@ -236,6 +246,18 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             norm_obs[offset + 4] = ego_TA
             norm_obs[offset + 5] = R / 10000
             norm_obs[offset + 6] = side_flag
+
+        # missile_sims = env.agents[agent_id].check_all_missile_warning
+        # for missile in missile_sims:
+        #     missile_feature = np.concatenate((missile.get_position(), missile.get_velocity()))
+        #     ego_AO, ego_TA, R, side_flag = get_AO_TA_R(ego_feature, missile_feature, return_side=True)
+        #     norm_obs[offset + 1] = (np.linalg.norm(missile.get_velocity()) - ego_state[9]) / 340
+        #     norm_obs[offset + 2] = (missile_feature[2] - ego_state[2]) / 1000
+        #     norm_obs[offset + 3] = ego_AO
+        #     norm_obs[offset + 4] = ego_TA
+        #     norm_obs[offset + 5] = R / 10000
+        #     norm_obs[offset + 6] = side_flag
+        #     offset += 6
         return norm_obs
 
     def reset(self, env):
