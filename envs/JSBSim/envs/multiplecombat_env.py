@@ -46,80 +46,126 @@ class MultipleCombatEnv(BaseEnv):
     def reset_simulators(self):
         # self.normal_reset_simulators()
         self.random_reset_simulators()
-    def random_reset_simulators(self):
+
+    def random_reset_simulators(self, min_sep_km: float = 0.5):
+        import math, random
+
         # --- 常量定义 ---
-        KM_PER_DEG_LAT = 111.132  # 每度纬度对应的公里数 (近似值)
-        KM_PER_DEG_LON_AT_EQ = 111.320  # 赤道上每度经度对应的公里数 (近似值)
+        KM_PER_DEG_LAT = 111.132  # 每度纬度≈公里
+        KM_PER_DEG_LON_AT_EQ = 111.320  # 赤道每度经度≈公里
         FT_PER_METER = 3.28084
 
-        # --- 基地和距离设置 ---
+        # --- 基地与范围设置 ---
         red_base_lon_deg = 120.0
         red_base_lat_deg = 60.0
-        inner_radius_km = 5.0  # 队伍内部散布半径
-        min_base_separation_km = 10.0  # 队伍基地最小间距
-        max_base_separation_km = 40.0  # (可选) 队伍基地最大间距，增加随机性
+        inner_radius_km = 5.0
+        min_base_separation_km = 10.0
+        max_base_separation_km = 40.0
 
-        # --- 计算红队纬度处的经度换算因子 ---
-        # 注意：math.cos() 需要弧度
+        # 红队经度换算（在红队纬度处）
         km_per_deg_lon_red = KM_PER_DEG_LON_AT_EQ * math.cos(math.radians(red_base_lat_deg))
 
-        # --- 计算蓝队基地的随机位置 ---
-        # 1. 随机选择一个方向 (角度)
+        # 随机生成蓝队基地（相对红队）
         angle_rad = random.uniform(0, 2 * math.pi)
-        # 2. 随机选择一个距离 (大于等于最小间距)
         distance_km = random.uniform(min_base_separation_km, max_base_separation_km)
-
-        # 3. 计算经纬度偏移量 (使用平面近似，对于几十公里通常足够)
         delta_lat_deg = (distance_km * math.cos(angle_rad)) / KM_PER_DEG_LAT
-        # 使用红队基地的经度换算因子作为近似
         delta_lon_deg = (distance_km * math.sin(angle_rad)) / km_per_deg_lon_red
-
-        # 4. 计算蓝队基准点
-        blue_base_lon_deg = red_base_lon_deg + delta_lon_deg
         blue_base_lat_deg = red_base_lat_deg + delta_lat_deg
+        blue_base_lon_deg = red_base_lon_deg + delta_lon_deg
 
-        # --- 计算蓝队纬度处的经度换算因子 ---
+        # 蓝队经度换算（在蓝队纬度处）
         km_per_deg_lon_blue = KM_PER_DEG_LON_AT_EQ * math.cos(math.radians(blue_base_lat_deg))
 
-        # --- 计算内部散布的最大经纬度偏移量 ---
-        #   (单位: 度)
-        max_lat_offset_deg = inner_radius_km / KM_PER_DEG_LAT
-        max_lon_offset_deg_red = inner_radius_km / km_per_deg_lon_red
-        max_lon_offset_deg_blue = inner_radius_km / km_per_deg_lon_blue
+        # 工具函数：在半径为 R_km 的圆内均匀采样一个偏移（返回经纬度偏移，单位度）
+        def sample_offset_deg(R_km: float, km_per_deg_lon: float):
+            # 圆内均匀：r = R*sqrt(u), theta~U(0,2π)
+            u = random.random()
+            r = R_km * math.sqrt(u)
+            theta = random.uniform(0.0, 2.0 * math.pi)
+            dlat_km = r * math.cos(theta)
+            dlon_km = r * math.sin(theta)
+            return dlat_km / KM_PER_DEG_LAT, dlon_km / km_per_deg_lon
 
-        # --- 循环设置每个单位的初始条件 ---
-        for sim_id, sim in self._jsbsims.items():
-            # 为每个单位生成独立的随机属性
-            altitude_m = random.randint(5000, 10000)  # 先用米，方便理解
-            heading_deg = random.randint(0, 359)  # 0-359 更常用
-            speed_mps = random.randint(100, 300)  # 先用米/秒
+        # 工具函数：检查平面近似下的两点距离是否>=最小间距
+        def far_enough(new_lat_deg, new_lon_deg, placed_list, km_per_deg_lon: float, min_sep: float):
+            for (lat_deg, lon_deg) in placed_list:
+                dlat_km = (new_lat_deg - lat_deg) * KM_PER_DEG_LAT
+                dlon_km = (new_lon_deg - lon_deg) * km_per_deg_lon
+                if (dlat_km * dlat_km + dlon_km * dlon_km) < (min_sep * min_sep):
+                    return False
+            return True
 
-            if sim_id.startswith('A'):  # 红队
-                # 在基准点周围随机偏移 (允许负值)
-                offset_lat = random.uniform(-max_lat_offset_deg, max_lat_offset_deg)
-                offset_lon = random.uniform(-max_lon_offset_deg_red, max_lon_offset_deg_red)
+        # 按队伍分组
+        red_ids = [sid for sid in self._jsbsims.keys() if sid.startswith('A')]
+        blue_ids = [sid for sid in self._jsbsims.keys() if sid.startswith('B')]
+        other_ids = [sid for sid in self._jsbsims.keys() if not (sid.startswith('A') or sid.startswith('B'))]
 
-                sim.reload({
-                    "ic_long_gc_deg": red_base_lon_deg + offset_lon,
-                    "ic_lat_geod_deg": red_base_lat_deg + offset_lat,
-                    "ic_h_sl_ft": altitude_m * FT_PER_METER,
-                    "ic_psi_true_deg": heading_deg,
-                    "ic_u_fps": speed_mps * FT_PER_METER,  # 假设 ic_u_fps 是总速度标量
-                })
-            elif sim_id.startswith('B'):  # 蓝队
-                # 在基准点周围随机偏移 (允许负值)
-                offset_lat = random.uniform(-max_lat_offset_deg, max_lat_offset_deg)
-                offset_lon = random.uniform(-max_lon_offset_deg_blue, max_lon_offset_deg_blue)
+        # 为每个队在其基地圆内放置满足最小间距的点
+        def place_team(team_ids, base_lat_deg, base_lon_deg, km_per_deg_lon, R_km, min_sep):
+            placed = []  # 已放置的(纬度, 经度)
+            # 逐个飞机放置
+            for _ in team_ids:
+                attempts = 0
+                max_attempts = 2000
+                cur_min_sep = min_sep
+                # 连续数次放不下就小幅放宽（避免极端拥挤导致死循环）
+                while True:
+                    attempts += 1
+                    off_lat_deg, off_lon_deg = sample_offset_deg(R_km, km_per_deg_lon)
+                    cand_lat = base_lat_deg + off_lat_deg
+                    cand_lon = base_lon_deg + off_lon_deg
+                    if far_enough(cand_lat, cand_lon, placed, km_per_deg_lon, cur_min_sep):
+                        placed.append((cand_lat, cand_lon))
+                        break
+                    if attempts >= max_attempts:
+                        # 放宽 10% 再继续尝试
+                        cur_min_sep *= 0.9
+                        attempts = 0
+            return placed  # 与 team_ids 顺序对应
 
-                sim.reload({
-                    "ic_long_gc_deg": blue_base_lon_deg + offset_lon,
-                    "ic_lat_geod_deg": blue_base_lat_deg + offset_lat,
-                    "ic_h_sl_ft": altitude_m * FT_PER_METER,
-                    "ic_psi_true_deg": heading_deg,
-                    "ic_u_fps": speed_mps * FT_PER_METER,
-                })
+        red_positions = place_team(red_ids, red_base_lat_deg, red_base_lon_deg, km_per_deg_lon_red, inner_radius_km,
+                                   min_sep_km)
+        blue_positions = place_team(blue_ids, blue_base_lat_deg, blue_base_lon_deg, km_per_deg_lon_blue,
+                                    inner_radius_km, min_sep_km)
+
+        # 将坐标回填到各飞机并随机其它属性
+        # 注意：ic_u_fps 通常为机体前向速度分量，如果你需要总速度=真空速，且引擎/姿态初始化匹配，可继续使用此写法
+        # 如需三轴速度，可额外设置 ic_v_fps / ic_w_fps = 0
+        # 这里保持你原有的范围
+        for idx, sid in enumerate(red_ids):
+            sim = self._jsbsims[sid]
+            altitude_m = random.randint(5000, 10000)
+            heading_deg = random.randint(0, 359)
+            speed_mps = random.randint(150, 300)
+            lat_deg, lon_deg = red_positions[idx]
+            sim.reload({
+                "ic_long_gc_deg": lon_deg,
+                "ic_lat_geod_deg": lat_deg,
+                "ic_h_sl_ft": altitude_m * FT_PER_METER,
+                "ic_psi_true_deg": heading_deg,
+                "ic_u_fps": speed_mps * FT_PER_METER,
+            })
+
+        for idx, sid in enumerate(blue_ids):
+            sim = self._jsbsims[sid]
+            altitude_m = random.randint(5000, 10000)
+            heading_deg = random.randint(0, 359)
+            speed_mps = random.randint(150, 300)
+            lat_deg, lon_deg = blue_positions[idx]
+            sim.reload({
+                "ic_long_gc_deg": lon_deg,
+                "ic_lat_geod_deg": lat_deg,
+                "ic_h_sl_ft": altitude_m * FT_PER_METER,
+                "ic_psi_true_deg": heading_deg,
+                "ic_u_fps": speed_mps * FT_PER_METER,
+            })
+
+        # 对于非 A/B 的 sim_id，给出明确提示（也可改成 raise）
+        for sid in other_ids:
+            raise ValueError(f"Unsupported sim_id prefix for {sid}. Use 'A' or 'B'.")
 
         self._tempsims.clear()
+
     def normal_reset_simulators(self):
         # Assign new initial condition here!
         for sim in self._jsbsims.values():
