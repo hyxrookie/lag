@@ -16,4 +16,4 @@ CUDA_VISIBLE_DEVICES=1 nohup python train/train_jsbsim.py \
     --use-selfplay --selfplay-algorithm "fsp" --n-choose-opponents 1 \
     --use-eval --n-eval-rollout-threads 1 --eval-interval 1 --eval-episodes 1 \
     --user-name "jyh"  --wandb-name "thu_jsbsim" \
-    > train_4v4_shoot_selfplay.log 2>1&1 &
+    > train_4v4_shoot_selfplay.log 2>&1 &
