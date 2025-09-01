@@ -59,7 +59,7 @@ class MultipleCombatEnv(BaseEnv):
         red_base_lon_deg = 120.0
         red_base_lat_deg = 60.0
         inner_radius_km = 5.0
-        min_base_separation_km = 10.0
+        min_base_separation_km = 20.0
         max_base_separation_km = 40.0
 
         # 红队经度换算（在红队纬度处）
@@ -144,6 +144,7 @@ class MultipleCombatEnv(BaseEnv):
                 "ic_h_sl_ft": altitude_m * FT_PER_METER,
                 "ic_psi_true_deg": heading_deg,
                 "ic_u_fps": speed_mps * FT_PER_METER,
+                # "ic_u_fps": 800,
             })
 
         for idx, sid in enumerate(blue_ids):
@@ -158,6 +159,7 @@ class MultipleCombatEnv(BaseEnv):
                 "ic_h_sl_ft": altitude_m * FT_PER_METER,
                 "ic_psi_true_deg": heading_deg,
                 "ic_u_fps": speed_mps * FT_PER_METER,
+                # "ic_u_fps": 800,
             })
 
         # 对于非 A/B 的 sim_id，给出明确提示（也可改成 raise）
@@ -207,19 +209,50 @@ class MultipleCombatEnv(BaseEnv):
         share_obs = self.get_state()
 
         rewards = {}
-        for agent_id in self.agents.keys():
-            reward, info = self.task.get_reward(self, agent_id, info)
-            rewards[agent_id] = [reward]
-        ego_reward = np.mean([rewards[ego_id] for ego_id in self.ego_ids])
-        enm_reward = np.mean([rewards[enm_id] for enm_id in self.enm_ids])
-        for ego_id in self.ego_ids:
-            rewards[ego_id] = [ego_reward]
-        for enm_id in self.enm_ids:
-            rewards[enm_id] = [enm_reward]
+        taskname = getattr(self.config, 'task', None)
+        if taskname != 'hierarchical_multiplecombat_shoot':
+            for agent_id in self.agents.keys():
+                reward, info = self.task.get_reward(self, agent_id, info)
+                rewards[agent_id] = [reward]
+            ego_reward = np.mean([rewards[ego_id] for ego_id in self.ego_ids])
+            enm_reward = np.mean([rewards[enm_id] for enm_id in self.enm_ids])
+            for ego_id in self.ego_ids:
+                rewards[ego_id] = [ego_reward]
+            for enm_id in self.enm_ids:
+                rewards[enm_id] = [enm_reward]
+        else:
+            for agent_id in self.agents.keys():
+                reward, info = self.task.get_reward(self, agent_id, info)
+                rewards[agent_id] = [reward]
+            team_reward_ego = 0
+            team_reward_enm = 0
+            for ego_id in self.ego_ids:
+                team_reward_ego, info = self.task.get_team_reward(self, ego_id, info)
+                break
+            for enm_id in self.enm_ids:
+                team_reward_enm, info = self.task.get_team_reward(self, enm_id, info)
+                break
+
+            ALPHA = 0.75  # 4v4 常用 0.7~0.85；越大越偏向个体
+
+            # 我方
+            for ego_id in self.ego_ids:
+                indiv = float(rewards[ego_id][0])  # 你的个体奖励（保持列表结构）
+                team = float(team_reward_ego)  # 你的团队奖励（按你现在的取法）
+                rewards[ego_id][0] = ALPHA * indiv + (1 - ALPHA) * team
+
+            # 敌方
+            for enm_id in self.enm_ids:
+                indiv = float(rewards[enm_id][0])
+                team = float(team_reward_enm)
+                rewards[enm_id][0] = ALPHA * indiv + (1 - ALPHA) * team
+
 
         dones = {}
         for agent_id in self.agents.keys():
             done, info = self.task.get_termination(self, agent_id, info)
             dones[agent_id] = [done]
+
+
 
         return self._pack(obs), self._pack(share_obs), self._pack(rewards), self._pack(dones), info

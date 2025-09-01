@@ -5,6 +5,11 @@ from gymnasium import spaces
 from typing import Tuple
 import torch
 
+from ..reward_functions.ApproachAndOrientReward import ApproachAndOrientReward
+from ..reward_functions.dodge_highest_tactical_threat_reward import EvasionReward
+from ..reward_functions.new_missile_dodge_reward import NewMissileDodgeContinuousReward
+from ..reward_functions.tactical_advantage_reward import TacticalAdvantageReward
+from ..reward_functions.team_reward import TeamReward
 from ..tasks import SingleCombatTask
 from ..core.catalog import Catalog as c
 from ..core.simulatior import MissileSimulator
@@ -131,6 +136,8 @@ class MultipleCombatTask(SingleCombatTask):
             return 0.0, info
 
 
+
+
 class HierarchicalMultipleCombatTask(MultipleCombatTask):
     
     def __init__(self, config: str):
@@ -185,15 +192,15 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         self.max_attack_distance = getattr(self.config, 'max_attack_distance', np.inf)
         self.min_attack_interval = getattr(self.config, 'min_attack_interval', 125)
         self.reward_functions = [
-            AttackWindowReward(self.config),
-            DogdeAttackWindowReward(self.config),
-            ComputeClosenessReward(self.config),
-            FriendlyRangeReward(self.config),
+            TacticalAdvantageReward(self.config),
+            ApproachAndOrientReward(self.config),
+            EvasionReward(self.config),
+            NewMissileDodgeContinuousReward(self.config),
             EventDrivenReward(self.config),
-            VelocityReward(self.config),
-            MissileDodgeReward(self.config),
-            AltitudeReward(self.config),
-
+            AltitudeReward(self.config)
+        ]
+        self.team_functions = [
+            TeamReward(self.config)
         ]
     
     def load_observation_space(self):
@@ -298,6 +305,12 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             shoot_flag = agent.is_alive and self._shoot_action[agent_id] and self._remaining_missiles[agent_id] > 0 \
                 and attack_angle <= self.max_attack_angle and distance <= self.max_attack_distance and shoot_interval >= self.min_attack_interval\
                 and agent_v > 150
+            x = agent.is_alive and self._remaining_missiles[agent_id] > 0 \
+                and attack_angle <= self.max_attack_angle and distance <= self.max_attack_distance and shoot_interval >= self.min_attack_interval\
+                and agent_v > 150
+            # print(f"self._shoot_action[agent_id]{self._shoot_action[agent_id]}, x is {x}")
+            # print(f"shoot_flag:{shoot_flag}, agent_v:{agent_v}")
+            # print(f"agent_id:{agent_id}, remaining_missiles: {self._remaining_missiles[agent_id]}")
             if shoot_flag:
                 new_missile_uid = agent_id + str(self._remaining_missiles[agent_id])
                 env.add_temp_simulator(

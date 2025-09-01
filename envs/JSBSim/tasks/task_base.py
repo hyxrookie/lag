@@ -15,6 +15,7 @@ class BaseTask(ABC):
     def __init__(self, config):
         self.config = config
         self.reward_functions = []
+        self.team_functions = []
         self.termination_conditions = []
         self.load_variables()
         self.load_observation_space()
@@ -85,6 +86,12 @@ class BaseTask(ABC):
         """
         reward = 0.0
         for reward_function in self.reward_functions:
+            reward += reward_function.get_reward(self, env, agent_id)
+        return reward, info
+
+    def get_team_reward(self, env, agent_id, info={}) -> Tuple[float, dict]:
+        reward = 0.0
+        for reward_function in self.team_functions:
             reward += reward_function.get_reward(self, env, agent_id)
         return reward, info
 

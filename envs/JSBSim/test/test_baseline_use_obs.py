@@ -114,7 +114,7 @@ def test_maneuver():
     env.seed(0)
     obs = env.reset()
     env.render()
-    agent0 = ManeuverAgent(agent_id=0, maneuver='n')
+    agent0 = ManeuverAgent(agent_id=0, maneuver='l')
     agent1 = PursueAgent(agent_id=1)
     reward_list = []
     step = 0
@@ -134,7 +134,7 @@ def test_maneuver():
     env.seed(0)
     obs = env.reset()
     env.render()
-    agent0 = ManeuverAgent(agent_id=0, maneuver='n')
+    agent0 = ManeuverAgent(agent_id=0, maneuver='l')
     agent1 = PursueAgent(agent_id=1)
     reward_list = []
     step = 0

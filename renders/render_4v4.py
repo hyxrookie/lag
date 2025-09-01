@@ -1,3 +1,6 @@
+import os
+from datetime import datetime
+
 import numpy as np
 import torch
 from envs.JSBSim.envs import SingleCombatEnv, SingleControlEnv, MultipleCombatEnv
@@ -22,20 +25,32 @@ class Args:
         self.recurrent_hidden_layers = 1
         self.tpdv = dict(dtype=torch.float32, device=torch.device('cpu'))
         self.use_prior = True
-    
+
+def make_output_path(experiment_name: str, suffix: str = ".txt.acmi") -> str:
+    base_dir = os.path.dirname(os.path.abspath(__file__))      # 当前python文件目录
+    date_str = datetime.now().strftime("%Y%m%d")                # 日期文件夹
+    time_str = datetime.now().strftime("%H%M%S")                # 秒级时间戳
+    date_dir = os.path.join(base_dir, date_str)
+    os.makedirs(date_dir, exist_ok=True)
+    filename = f"{experiment_name}_{time_str}{suffix}"
+    return os.path.join(date_dir, filename)
 def _t2n(x):
     return x.detach().cpu().numpy()
 
-scenario_name = "4v4/ShootMissile/HierarchySelfplay"
+scenario_name = "4v4/ShootMissile/MyHierarchySelfplay"
 config = parse_config(scenario_name)
 num_agents = len(config.aircraft_configs)
 render = True
-ego_policy_index = 0
-enm_policy_index = 0
+ego_policy_index = 781
+enm_policy_index = 694
 episode_rewards = 0
-ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
-enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
+ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/MyHierarchySelfplay/mappo/v1/run3/"
+enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/MyHierarchySelfplay/mappo/v1/run3/"
+# 获取当前 python 文件所在目录
+
 experiment_name = ego_run_dir.split('/')[-4]
+experiment_name = make_output_path(experiment_name, suffix=".txt.acmi")
+
 env = MultipleCombatEnv(scenario_name)
 env.seed(0)
 args = Args()
@@ -86,3 +101,4 @@ while True:
     ego_obs =  obs[:num_agents // 2, ...]
 
 print(episode_rewards)
+

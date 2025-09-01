@@ -2,7 +2,7 @@ import os
 import yaml
 import pymap3d
 import numpy as np
-
+import math
 
 def parse_config(filename):
     """Parse JSBSim config file.
@@ -116,3 +116,59 @@ def in_range_rad(angle):
     if angle > np.pi:
         angle -= 2 * np.pi
     return angle
+
+
+def _calculate_tactical_score(attacker, target, config):
+    """
+    辅助函数：计算一个单位对另一个单位的战术分数。
+    这个函数是计算团队态势优势的基础。建议将其放在一个公共位置（如 utils.py）以便调用。
+
+    Args:
+        attacker: 发起攻击或评估优势的智能体对象。
+        target: 被评估的目标智能体对象。
+        config: 包含所有奖励函数参数的配置对象。
+
+    Returns:
+        float: [0, 1] 范围内的综合战术优势分数。
+    """
+    # --- 从 config 中获取参数，如果不存在则使用默认值 ---
+    min_attack_range = getattr(config, 'min_attack_range', 4000.0)
+    max_attack_range = getattr(config, 'max_attack_range', 14000.0)
+    range_decay_factor = getattr(config, 'range_decay_factor', 0.0005)
+    max_ao_rad = math.radians(getattr(config, 'max_missile_attack_angle', 60.0))
+    altitude_advantage_ref = getattr(config, 'altitude_advantage_ref', 1000.0)
+    velocity_advantage_ref = getattr(config, 'velocity_advantage_ref', 100.0)
+    w_geometry = getattr(config, 'w_geometry', 0.6)
+    w_energy = getattr(config, 'w_energy', 0.4)
+    w_ta_angle = getattr(config, 'w_ta_angle', 0.5)
+    w_ao_angle = getattr(config, 'w_ao_angle', 0.3)
+    w_range = getattr(config, 'w_range_geom', 0.2)
+    w_altitude = getattr(config, 'w_altitude', 0.5)
+    w_velocity = getattr(config, 'w_velocity', 0.5)
+
+    # --- 获取运动学特征 ---
+    attacker_feature = np.hstack([attacker.get_position(), attacker.get_velocity()])
+    target_feature = np.hstack([target.get_position(), target.get_velocity()])
+
+    AO, TA, R = get_AO_TA_R(attacker_feature, target_feature)
+
+    # --- 1. 计算几何优势分数 ---
+    ta_score = (math.cos(TA) + 1.0) / 2.0
+    ao_score = max(0.0, 1.0 - (abs(AO) / max_ao_rad))
+    if min_attack_range <= R <= max_attack_range:
+        range_score = 1.0
+    elif R < min_attack_range:
+        range_score = math.exp(-range_decay_factor * (min_attack_range - R))
+    else:
+        range_score = math.exp(-range_decay_factor * (R - max_attack_range))
+    geometric_score = w_ta_angle * ta_score + w_ao_angle * ao_score + w_range * range_score
+
+    # --- 2. 计算能量优势分数 ---
+    alt_diff = attacker.get_position()[2] - target.get_position()[2]
+    alt_score = (math.tanh(alt_diff / altitude_advantage_ref) + 1.0) / 2.0
+    vel_diff = np.linalg.norm(attacker.get_velocity()) - np.linalg.norm(target.get_velocity())
+    vel_score = (math.tanh(vel_diff / velocity_advantage_ref) + 1.0) / 2.0
+    energy_score = w_altitude * alt_score + w_velocity * vel_score
+
+    # --- 3. 计算总战术优势分数 ---
+    return w_geometry * geometric_score + w_energy * energy_score
