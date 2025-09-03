@@ -153,21 +153,17 @@ def _calculate_tactical_score(attacker, target, config):
     AO, TA, R = get_AO_TA_R(attacker_feature, target_feature)
 
     # --- 1. 计算几何优势分数 ---
-    ta_score = (math.cos(TA) + 1.0) / 2.0
-    ao_score = max(0.0, 1.0 - (abs(AO) / max_ao_rad))
-    if min_attack_range <= R <= max_attack_range:
-        range_score = 1.0
-    elif R < min_attack_range:
-        range_score = math.exp(-range_decay_factor * (min_attack_range - R))
-    else:
-        range_score = math.exp(-range_decay_factor * (R - max_attack_range))
+    ta_score = ((math.cos(TA) + 1.0) / 2.0) if abs(TA) <= max_ao_rad else 0.0
+    ao_score = (1.0 - (abs(AO) / max_ao_rad)) if abs(AO) <= max_ao_rad else 0.0
+    range_score = 1.0 if min_attack_range <= R <= max_attack_range else 0.0
+
     geometric_score = w_ta_angle * ta_score + w_ao_angle * ao_score + w_range * range_score
 
     # --- 2. 计算能量优势分数 ---
     alt_diff = attacker.get_position()[2] - target.get_position()[2]
-    alt_score = (math.tanh(alt_diff / altitude_advantage_ref) + 1.0) / 2.0
+    alt_score = ((math.tanh(alt_diff / altitude_advantage_ref) + 1.0) / 2.0) if alt_diff >= 0 else 0.0
     vel_diff = np.linalg.norm(attacker.get_velocity()) - np.linalg.norm(target.get_velocity())
-    vel_score = (math.tanh(vel_diff / velocity_advantage_ref) + 1.0) / 2.0
+    vel_score = ((math.tanh(vel_diff / velocity_advantage_ref) + 1.0) / 2.0) if vel_diff >= 0 else 0.0
     energy_score = w_altitude * alt_score + w_velocity * vel_score
 
     # --- 3. 计算总战术优势分数 ---

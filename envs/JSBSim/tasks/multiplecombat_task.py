@@ -196,6 +196,7 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             ApproachAndOrientReward(self.config),
             EvasionReward(self.config),
             NewMissileDodgeContinuousReward(self.config),
+            # MissileDodgeReward(self.config),
             EventDrivenReward(self.config),
             AltitudeReward(self.config)
         ]

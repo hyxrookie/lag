@@ -92,8 +92,8 @@ class ApproachAndOrientReward(BaseRewardFunction):
 
             # 只有在改善时才给予奖励，避免因为情况恶化而惩罚
             # 这使得这个奖励函数更专注于“正向激励”
-            orient_reward = max(0, orient_improvement)
-            approach_reward = max(0, approach_improvement)
+            orient_reward = orient_improvement
+            approach_reward = approach_improvement
 
             # 加权求和
             new_reward = self.reward_scale * (self.w_orient * orient_reward + self.w_approach * approach_reward)

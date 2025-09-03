@@ -29,12 +29,14 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
         self.success_dodge_reward = getattr(self.config, 'success_dodge_reward', 100.0)
 
         # --- 战术权重 ---
-        self.w_angle = getattr(self.config, 'w_angle', 0.5)  # 姿态控制权重
-        self.w_closing_speed = getattr(self.config, 'w_closing_speed', 0.5)  # 降低接近率权重
+        self.w_angle = getattr(self.config, 'w_angle', 0.4)  # 姿态控制权重
+        self.w_closing_speed = getattr(self.config, 'w_closing_speed', 0.4)  # 降低接近率权重
+        self.w_proximity = getattr(self.config, 'w_proximity', 0.2) #距离权重
 
         # --- 运动学参数 ---
         self.closing_speed_change_ref = getattr(self.config, 'closing_speed_change_ref', 50.0)
         self.threat_range_decay = getattr(self.config, 'threat_range_decay', 0.0001)
+        self.proximity_ref_dist = getattr(self.config, 'proximity_ref_dist', 2000.0)
 
         # 最终奖励的放大系数
         self.reward_scale = getattr(self.config, 'dodge_reward_scale', 20.0)
@@ -52,9 +54,7 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
 
         # ========================= 代码修改区域开始 =========================
 
-        # [删除] 不再需要追踪单个最大威胁和最佳分数
-        # max_threat_level = -1.0
-        # best_evasion_score = 0.0
+        agent_missile_states = self.prev_missile_states.get(agent_id, {})
 
         # [新增] 初始化用于加权平均的累加器
         sum_of_weighted_scores = 0.0  # 分子: sum(threat_i * score_i)
@@ -65,12 +65,12 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
         missile_sims = agent.check_all_missile_warning()
 
         # 检查并处理成功规避的导弹 (这部分逻辑不变)
-        prev_uids = list(self.prev_missile_states.keys())
+        prev_uids = list(agent_missile_states.keys())
         current_uids = {m.uid for m in missile_sims if m.is_alive}
         for uid in prev_uids:
             if uid not in current_uids:
                 total_reward += self.success_dodge_reward
-                del self.prev_missile_states[uid]
+                del agent_missile_states[uid]
 
         # 遍历当前所有来袭导弹
         for sim in missile_sims:
@@ -92,8 +92,14 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
             # --- 2. 评估威胁等级 (这部分逻辑不变) ---
             threat_level = max(0, closing_speed) * math.exp(-self.threat_range_decay * distance)
 
+            angle_score = 0.0
+            closing_speed_score = 0.0
+            proximity_score = -math.exp(-distance / self.proximity_ref_dist) # 距离惩罚
+            print(f"距离惩罚{proximity_score}")
             current_evasion_score = 0.0  # [修改] 初始化当前分数，以处理首次出现的情况
-            if sim.uid in self.prev_missile_states:
+            if sim.uid not in agent_missile_states:
+                agent_missile_states[sim.uid] = {'closing_speed':closing_speed}
+            if sim.uid in agent_missile_states:
                 # --- 3. 计算规避分数 (Evasion Score) [0, 1] (这部分逻辑不变) ---
 
                 # a. 最佳规避姿态分数 (Angle Score)
@@ -102,17 +108,24 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
                 cos_angle = np.clip(dot_product / (norm_product + 1e-6), -1.0, 1.0)
 
                 beaming_score = 1 - cos_angle ** 2
-                fleeing_score = max(0, cos_angle)
-                angle_score = max(beaming_score, fleeing_score)
+                fleeing_score = cos_angle
+                if cos_angle >= 0:  # 防御姿态
+                    # 奖励横向和逃逸的加权和
+                    angle_score = (0.5 * beaming_score +
+                                   0.5 * fleeing_score)
+                else:  # 危险姿态 (迎头)
+                    # 只应用惩罚，惩罚力度与迎头程度成正比
+                    angle_score = fleeing_score  # fleeing_score此时为负值
 
                 # b. 降低接近率分数 (Closing Speed Reduction Score)
-                prev_closing_speed = self.prev_missile_states[sim.uid]['closing_speed']
+                prev_closing_speed = agent_missile_states[sim.uid]['closing_speed']
                 delta_closing_speed = closing_speed - prev_closing_speed
-                closing_speed_score = (math.tanh(-delta_closing_speed / self.closing_speed_change_ref) + 1.0) / 2.0
+                closing_speed_score = math.tanh(-delta_closing_speed / self.closing_speed_change_ref)
 
                 # c. 综合规避分数
                 current_evasion_score = (self.w_angle * angle_score +
-                                         self.w_closing_speed * closing_speed_score)
+                                         self.w_closing_speed * closing_speed_score +
+                                         self.w_proximity * proximity_score)
 
             # ========================= 代码修改区域开始 =========================
 
@@ -130,9 +143,9 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
             # ========================= 代码修改区域结束 =========================
 
             # --- 4. 更新上一时刻状态 (这部分逻辑不变) ---
-            self.prev_missile_states[sim.uid] = {'closing_speed': closing_speed}
+            agent_missile_states[sim.uid] = {'closing_speed': closing_speed}
 
-        # ========================= 代码修改区域开始 =========================
+        self.prev_missile_states[agent_id] = agent_missile_states
 
         # [新增] 计算最终的加权平均规避分数
         final_evasion_score = 0.0

@@ -43,7 +43,7 @@ class EvasionReward(BaseRewardFunction):
 
         # --- 惩罚放大系数 ---
         # 惩罚的scale，使其与进攻奖励的大小相匹配
-        self.penalty_scale = getattr(self.config, 'evasion_penalty_scale', -15.0)
+        self.penalty_scale = getattr(self.config, 'evasion_penalty_scale', -25.0)
         # 当有导弹来袭时，威胁的放大倍数
         self.missile_threat_multiplier = getattr(self.config, 'missile_threat_multiplier', 5.0)
 
