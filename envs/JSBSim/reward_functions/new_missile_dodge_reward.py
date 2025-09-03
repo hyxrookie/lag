@@ -95,7 +95,7 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
             angle_score = 0.0
             closing_speed_score = 0.0
             proximity_score = -math.exp(-distance / self.proximity_ref_dist) # 距离惩罚
-            print(f"距离惩罚{proximity_score}")
+            # print(f"距离惩罚{proximity_score}")
             current_evasion_score = 0.0  # [修改] 初始化当前分数，以处理首次出现的情况
             if sim.uid not in agent_missile_states:
                 agent_missile_states[sim.uid] = {'closing_speed':closing_speed}
