@@ -23,7 +23,7 @@ class ApproachAndOrientReward(BaseRewardFunction):
         self.optimal_combat_range = getattr(self.config, 'optimal_combat_range', 20000)
 
         # 奖励的放大系数
-        self.reward_scale = getattr(self.config, 'approach_reward_scale', 5.0)
+        # self.reward_scale = getattr(self.config, 'approach_reward_scale', 5.0)
 
         # 存储上一帧的信息
         self.prev_info = {}
@@ -96,7 +96,7 @@ class ApproachAndOrientReward(BaseRewardFunction):
             approach_reward = approach_improvement
 
             # 加权求和
-            new_reward = self.reward_scale * (self.w_orient * orient_reward + self.w_approach * approach_reward)
+            new_reward = self.w_orient * orient_reward + self.w_approach * approach_reward
 
         # --- 4. 更新状态用于下一帧的计算 ---
         self.prev_info[agent_id] = {'ao_abs': abs(current_AO), 'r': current_R}

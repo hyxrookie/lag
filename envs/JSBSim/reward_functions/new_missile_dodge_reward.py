@@ -39,7 +39,7 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
         self.proximity_ref_dist = getattr(self.config, 'proximity_ref_dist', 2000.0)
 
         # 最终奖励的放大系数
-        self.reward_scale = getattr(self.config, 'dodge_reward_scale', 20.0)
+        # self.reward_scale = getattr(self.config, 'dodge_reward_scale', 20.0)
 
     def reset(self, task, env):
         self.prev_missile_states.clear()
@@ -154,7 +154,7 @@ class NewMissileDodgeContinuousReward(BaseRewardFunction):
             final_evasion_score = sum_of_weighted_scores / sum_of_threats
 
         # [修改] 使用新的加权平均分数来计算奖励
-        total_reward += self.reward_scale * final_evasion_score
+        total_reward += final_evasion_score
 
         # [删除] 原始的基于 best_evasion_score 的奖励计算
         # total_reward += self.reward_scale * best_evasion_score

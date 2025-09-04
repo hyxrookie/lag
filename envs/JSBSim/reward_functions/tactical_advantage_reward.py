@@ -43,7 +43,7 @@ class TacticalAdvantageReward(BaseRewardFunction):
         self.w_velocity = getattr(self.config, 'w_velocity', 0.5)
 
         # 最终奖励的放大系数
-        self.reward_scale = getattr(self.config, 'advantage_reward_scale', 15.0)  # 因为维度更多，可以适当提高
+        # self.reward_scale = getattr(self.config, 'advantage_reward_scale', 15.0)  # 因为维度更多，可以适当提高
 
     def get_reward(self, task, env, agent_id):
         ego_agent = env.agents[agent_id]
@@ -65,7 +65,7 @@ class TacticalAdvantageReward(BaseRewardFunction):
             if current_tactical_score > max_tactical_score:
                 max_tactical_score = current_tactical_score
 
-        new_reward = self.reward_scale * max_tactical_score
+        new_reward = max_tactical_score
 
         alive_missile = list(filter(lambda x: x.is_alive, env.agents[agent_id].check_all_missile_warning()))
         #如果被锁定了，这时应该优先考虑躲避

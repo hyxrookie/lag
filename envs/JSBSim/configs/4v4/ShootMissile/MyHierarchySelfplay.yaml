@@ -128,6 +128,17 @@ AltitudeReward_safe_altitude: 4.0
 AltitudeReward_danger_altitude: 3.5
 AltitudeReward_Kv: 0.2
 
+ApproachAndOrientReward_scale: 5.0
+ApproachAndOrientReward_potential: true
+
+TacticalAdvantageReward_scale: 15.0
+TacticalAdvantageReward_potential: true
+
+EvasionReward_scale: -25
+EvasionReward_potential: true
+
+NewMissileDodgeContinuousReward_scale: 20
+NewMissileDodgeContinuousReward_potential: true
 
 ##自己加的
 max_missile_attack_distance: 14000
