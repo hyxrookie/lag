@@ -2,6 +2,7 @@ import collections
 import gzip
 import random
 import struct
+import subprocess
 
 import numpy as np
 from typing import Tuple, Dict, Any, Set, Union
@@ -30,8 +31,8 @@ class ZKCombatEnv(BaseEnv):
         self.project_name = getattr(self.config, 'project_name', 'project2')
         self.excute_path = getattr(self.config, 'excute_path', "D:/ZK_20250815/Windows/ZK.exe")
         self.IP = getattr(self.config, 'ip', '127.0.0.1')
-        self.PORT = getattr(self.config, 'port', 18000) + port
-        self.RENDER = getattr(self.config, 'render', 0)
+        self.PORT = getattr(self.config, 'port', 13000) + port
+        self.RENDER = getattr(self.config, 'render', 1)
         self.red_num = 1 if self.project_name == 'project1' else 4
         self.blue_num = 1 if self.project_name == 'project1' else 4
         self.INITIAL = False
@@ -40,23 +41,50 @@ class ZKCombatEnv(BaseEnv):
 
         self._zk_sims = {}  # type: Dict[str, Aircraft]
         self._zk_missiles = {}  # type: Dict[str, Missile]
+        self.process = None
         while not is_success:
             try:
-                excute_cmd = f'{self.excute_path} ' \
-                             f'Ip={self.IP} Port={self.PORT} ' \
-                             f'PlayMode={self.RENDER} ' \
-                             f'RedNum={self.red_num} BlueNum={self.blue_num} ' \
-                             f'Red=0 Blue=0 Scenes=4'
-                print('Creating Env', excute_cmd)
-                # self.unity = os.popen(excute_cmd)
-                os.popen(excute_cmd)
-                time.sleep(20)
+                # 这一部分代码完全不用修改，因为我们使用了参数列表
+                # 这是最健壮、最跨平台的方式
+                args = [
+                    self.excute_path,
+                    f'Ip={self.IP}',
+                    f'Port={self.PORT}',
+                    f'PlayMode={self.RENDER}',
+                    f'RedNum={self.red_num}',
+                    f'BlueNum={self.blue_num}',
+                    'Red=0',
+                    'Blue=0',
+                    'Scenes=4'
+                ]
+                print('Creating Env on port {}...'.format(self.PORT))
+                print('Executing command:', ' '.join(args))  # 打印命令方便调试
+
+                self.process = subprocess.Popen(args)
+
+                time.sleep(40)
                 self._connect()
                 is_success = True
-                print('Env Created')
+                print('Env Created Successfully on port {}'.format(self.PORT))
+
+            except FileNotFoundError:
+                # <<< [推荐增加] 专门处理找不到文件的情况
+                print(f"错误: 找不到可执行文件 '{self.excute_path}'。请检查路径是否正确以及文件是否存在。")
+                # 找不到文件就没必要重试了，直接退出
+                raise
+
             except Exception as e:
-                self.PORT += 100
-                print('prot:{} Create failed and the reason is :{}'.format(self.PORT, e))
+                print('Port {} failed to create env: {}'.format(self.PORT, e))
+                if self.process:
+                    print(f'Terminating failed process (PID: {self.process.pid})...')
+                    self.process.terminate()
+                    try:
+                        self.process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        print(f'Process {self.process.pid} did not terminate in time, killing it.')
+                        self.process.kill()  # 如果 terminate 不行，就强制 kill
+
+                self.PORT += 50
                 time.sleep(5)
 
     @property
@@ -271,6 +299,7 @@ class ZKCombatEnv(BaseEnv):
             done, info = self.task.get_termination(self, agent_id, info)
             dones[agent_id] = [done]
 
+
         return self._pack(obs), self._pack(share_obs), self._pack(rewards), self._pack(dones), info
 
     def postprocess_action(self, action_dict):
@@ -290,7 +319,7 @@ class ZKCombatEnv(BaseEnv):
                 "fcs/throttle-cmd-norm": norm_action[3],
                 "fcs/weapon-launch": norm_action[4],
                 # "switch-missile": random.randint(0, 1),
-                "change-target": 9,
+                "change-target": 8,
             }
 
         return action_input
@@ -420,6 +449,9 @@ class ZKCombatEnv(BaseEnv):
         """
         # 遍历管理器中的每一架飞机
         for subject_aircraft in self._zk_sims.values():
+            TargetEnterAttackRange = subject_aircraft.get("TargetEnterAttackRange")
+            if TargetEnterAttackRange > 0:
+                print("TargetEnterAttackRange:{}".format(TargetEnterAttackRange))
             # 在每次更新前，清空旧的连接关系列表
             subject_aircraft.partners.clear()
             subject_aircraft.enemies.clear()
@@ -453,10 +485,9 @@ class ZKCombatEnv(BaseEnv):
                         temp_detected_sets[aircraft.key].add(enemy_aircraft)
         # 将计算结果（集合）转换为最终的共享列表，存储在局部字典中
         team_detected_lists = {
-            "red": sorted(list(temp_detected_sets["red"]), key=lambda x: x.name),
-            "blue": sorted(list(temp_detected_sets["blue"]), key=lambda x: x.name)
+            "red": sorted(list(temp_detected_sets["red"]), key=lambda x: x.uid),
+            "blue": sorted(list(temp_detected_sets["blue"]), key=lambda x: x.uid)
         }
-
         # --- 步骤 3: 为每架飞机链接到团队共享的探测列表 ---
         for aircraft in self._zk_sims.values():
             # 直接将属性指向局部字典中对应的共享列表
@@ -464,7 +495,7 @@ class ZKCombatEnv(BaseEnv):
 
     @staticmethod
     def get_common_init_pos():
-        max_range = 0.6
+        max_range = 0.25
         red_y = 0.5 * np.random.random() - 0.25
         blue_y = 0.5 * np.random.random() - 0.25
         initial_pos_set = {

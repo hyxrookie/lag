@@ -124,11 +124,6 @@ class ZKMultipleCombatTask(SingleCombatTask):
         norm_act[3] = action[3] * 0.5 / (self.action_space.nvec[3] - 1.) + 0.4
         return norm_act
 
-    def get_reward(self, env, agent_id, info: dict = ...) -> Tuple[float, dict]:
-        if env.agents[agent_id].is_alive:
-            return super().get_reward(env, agent_id, info=info)
-        else:
-            return 0.0, info
 
 
 class ZKHierarchicalMultipleCombatTask(ZKMultipleCombatTask):
@@ -226,6 +221,7 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
             # feature = np.array([*cur_ned, *(state[6:9])])
             sim_feature = np.hstack([sim.get_position(), sim.get_velocity()])
             AO, TA, R, side_flag = get_AO_TA_R(agent_feature, sim_feature, return_side=True)
+            # print("距离R:{}".format(R))
             norm_obs[offset + 1] = (sim.get("velocities/u-fps") - agent.get("velocities/u-fps")) / 1116.44
             norm_obs[offset + 2] = (sim_geodetic[2] - geodetic[2]) / 1000
             norm_obs[offset + 3] = AO
