@@ -189,53 +189,53 @@ def exit():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-    envname = "ZKMultipleCombat"
-    scenario = "zk/4v4/HierarchySelfplay"
-    algo = "mappo"
-    exp = "v1"
-    seed = 0
-
-    print(f"env is {envname}, scenario is {scenario}, algo is {algo}, exp is {exp}, seed is {seed}")
-
-    # 设置CUDA设备
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
-    # 构建命令参数列表
-    cmd_args = [
-        'python', 'train/train_jsbsim.py',
-        '--env-name', envname,
-        '--algorithm-name', algo,
-        '--scenario-name', scenario,
-        '--experiment-name', exp,
-        '--seed', str(seed),
-        '--n-training-threads', '1',
-        '--n-rollout-threads', '1',
-        '--cuda',
-        '--log-interval', '1',
-        '--save-interval', '1',
-        '--num-mini-batch', '5',
-        '--buffer-size', '3000',
-        '--num-env-steps', '1e8',
-        '--lr', '3e-4',
-        '--gamma', '0.99',
-        '--ppo-epoch', '4',
-        '--clip-params', '0.2',
-        '--max-grad-norm', '2',
-        '--entropy-coef', '1e-3',
-        '--hidden-size', '128 128',
-        '--act-hidden-size', '128 128',
-        '--recurrent-hidden-size', '128',
-        '--recurrent-hidden-layers', '1',
-        '--data-chunk-length', '8',
-        '--use-selfplay',
-        '--selfplay-algorithm', 'fsp',
-        '--n-choose-opponents', '1',
-        '--use-eval',
-        '--n-eval-rollout-threads', '1',
-        '--eval-interval', '1',
-        '--eval-episodes', '1',
-        '--user-name', 'jyh',
-    ]
-    main(cmd_args)
-    # main(sys.argv[1:])
+    #
+    # envname = "ZKMultipleCombat"
+    # scenario = "zk/4v4/HierarchySelfplay"
+    # algo = "mappo"
+    # exp = "v1"
+    # seed = 0
+    #
+    # print(f"env is {envname}, scenario is {scenario}, algo is {algo}, exp is {exp}, seed is {seed}")
+    #
+    # # 设置CUDA设备
+    # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    #
+    # # 构建命令参数列表
+    # cmd_args = [
+    #     'python', 'train/train_jsbsim.py',
+    #     '--env-name', envname,
+    #     '--algorithm-name', algo,
+    #     '--scenario-name', scenario,
+    #     '--experiment-name', exp,
+    #     '--seed', str(seed),
+    #     '--n-training-threads', '1',
+    #     '--n-rollout-threads', '1',
+    #     '--cuda',
+    #     '--log-interval', '1',
+    #     '--save-interval', '1',
+    #     '--num-mini-batch', '5',
+    #     '--buffer-size', '3000',
+    #     '--num-env-steps', '1e8',
+    #     '--lr', '3e-4',
+    #     '--gamma', '0.99',
+    #     '--ppo-epoch', '4',
+    #     '--clip-params', '0.2',
+    #     '--max-grad-norm', '2',
+    #     '--entropy-coef', '1e-3',
+    #     '--hidden-size', '128 128',
+    #     '--act-hidden-size', '128 128',
+    #     '--recurrent-hidden-size', '128',
+    #     '--recurrent-hidden-layers', '1',
+    #     '--data-chunk-length', '8',
+    #     '--use-selfplay',
+    #     '--selfplay-algorithm', 'fsp',
+    #     '--n-choose-opponents', '1',
+    #     '--use-eval',
+    #     '--n-eval-rollout-threads', '1',
+    #     '--eval-interval', '1',
+    #     '--eval-episodes', '1',
+    #     '--user-name', 'jyh',
+    # ]
+    # main(cmd_args)
+    main(sys.argv[1:])
