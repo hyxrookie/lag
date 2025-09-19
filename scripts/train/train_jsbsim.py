@@ -10,6 +10,10 @@ import logging
 import numpy as np
 from pathlib import Path
 import setproctitle
+
+from envs.JSBSim.envs.zk_env import ZKCombatEnv
+from runner.share_zk_runner import ShareZKRunner
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 from config import get_config
 from runner.share_jsbsim_runner import ShareJSBSimRunner
@@ -26,13 +30,15 @@ def make_train_env(all_args):
                 env = SingleControlEnv(all_args.scenario_name)
             elif all_args.env_name == "MultipleCombat":
                 env = MultipleCombatEnv(all_args.scenario_name)
+            elif all_args.env_name == "ZKMultipleCombat":
+                env = ZKCombatEnv(all_args.scenario_name, rank * 2)
             else:
                 logging.error("Can not support the " + all_args.env_name + "environment.")
                 raise NotImplementedError
             env.seed(all_args.seed + rank * 1000)
             return env
         return init_env
-    if all_args.env_name == "MultipleCombat":
+    if all_args.env_name == "MultipleCombat" or all_args.env_name == "ZKMultipleCombat":
         if all_args.n_rollout_threads == 1:
             return ShareDummyVecEnv([get_env_fn(0)])
         else:
@@ -53,13 +59,15 @@ def make_eval_env(all_args):
                 env = SingleControlEnv(all_args.scenario_name)
             elif all_args.env_name == "MultipleCombat":
                 env = MultipleCombatEnv(all_args.scenario_name)
+            elif all_args.env_name == "ZKMultipleCombat":
+                env = ZKCombatEnv(all_args.scenario_name, rank * 2 - 1)
             else:
                 logging.error("Can not support the " + all_args.env_name + "environment.")
                 raise NotImplementedError
             env.seed(all_args.seed * 50000 + rank * 1000)
             return env
         return init_env
-    if all_args.env_name == "MultipleCombat":
+    if all_args.env_name == "MultipleCombat" or all_args.env_name == "ZKMultipleCombat":
         if all_args.n_eval_rollout_threads == 1:
             return ShareDummyVecEnv([get_env_fn(0)])
         else:
@@ -153,6 +161,8 @@ def main(args):
     # run experiments
     if all_args.env_name == "MultipleCombat":
         runner = ShareJSBSimRunner(config)
+    elif all_args.env_name == "ZKMultipleCombat":
+        runner = ShareZKRunner(config)
     else:
         if all_args.use_selfplay:
             from runner.selfplay_jsbsim_runner import SelfplayJSBSimRunner as Runner
@@ -170,7 +180,62 @@ def main(args):
         if all_args.use_wandb:
             run.finish()
 
+import atexit
+@atexit.register
+def exit():
+    os.system("ps -ef|grep ZK.x86_64|grep -v grep |awk '{print $2}'|xargs kill -9")
+    os.system("taskkill /F /IM ZK.exe")
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    main(sys.argv[1:])
+
+    envname = "ZKMultipleCombat"
+    scenario = "zk/4v4/HierarchySelfplay"
+    algo = "mappo"
+    exp = "v1"
+    seed = 0
+
+    print(f"env is {envname}, scenario is {scenario}, algo is {algo}, exp is {exp}, seed is {seed}")
+
+    # 设置CUDA设备
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+    # 构建命令参数列表
+    cmd_args = [
+        'python', 'train/train_jsbsim.py',
+        '--env-name', envname,
+        '--algorithm-name', algo,
+        '--scenario-name', scenario,
+        '--experiment-name', exp,
+        '--seed', str(seed),
+        '--n-training-threads', '1',
+        '--n-rollout-threads', '1',
+        '--cuda',
+        '--log-interval', '1',
+        '--save-interval', '1',
+        '--num-mini-batch', '5',
+        '--buffer-size', '3000',
+        '--num-env-steps', '1e8',
+        '--lr', '3e-4',
+        '--gamma', '0.99',
+        '--ppo-epoch', '4',
+        '--clip-params', '0.2',
+        '--max-grad-norm', '2',
+        '--entropy-coef', '1e-3',
+        '--hidden-size', '128 128',
+        '--act-hidden-size', '128 128',
+        '--recurrent-hidden-size', '128',
+        '--recurrent-hidden-layers', '1',
+        '--data-chunk-length', '8',
+        '--use-selfplay',
+        '--selfplay-algorithm', 'fsp',
+        '--n-choose-opponents', '1',
+        '--use-eval',
+        '--n-eval-rollout-threads', '1',
+        '--eval-interval', '1',
+        '--eval-episodes', '1',
+        '--user-name', 'jyh',
+    ]
+    main(cmd_args)
+    # main(sys.argv[1:])
