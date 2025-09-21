@@ -132,5 +132,5 @@ AltitudeReward_Kv: 0.2
 project_name: project2 #科目一 1v1 科目二4v4
 ip: 127.0.0.1
 port: 13000
-render: 1 #0黑屏运行， #1实时推演
+render: 0 #0黑屏运行， #1实时推演
 excute_path: D:/ZK_20250815/Windows/ZK.exe #ZK.exe路径，最好不要有中文路径

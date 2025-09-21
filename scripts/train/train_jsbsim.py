@@ -303,5 +303,5 @@ if __name__ == "__main__":
 
 
     # main(multArgs())
-    main(singleArgs())
-    # main(sys.argv[1:])
+    # main(singleArgs())
+    main(sys.argv[1:])
