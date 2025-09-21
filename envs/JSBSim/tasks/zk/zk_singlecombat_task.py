@@ -129,7 +129,7 @@ class ZKHierarchicalSingleCombatShootTask(SingleCombatTask):
         # generate low-level input_obs
         raw_obs = self.get_obs(env, agent_id)
         input_obs = np.zeros(12)
-        print("action:{}".format(action))
+        # print("action:{}".format(action))
         # (1) delta altitude/heading/velocity
         input_obs[0] = self.norm_delta_altitude[action[0]]
         input_obs[1] = self.norm_delta_heading[action[1]]

@@ -214,7 +214,7 @@ def multArgs():
         '--experiment-name', exp,
         '--seed', str(seed),
         '--n-training-threads', '1',
-        '--n-rollout-threads', '1',
+        '--n-rollout-threads', '16',
         '--cuda',
         '--log-interval', '1',
         '--save-interval', '1',
@@ -259,7 +259,6 @@ def singleArgs():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
     # 4. 构建命令参数列表
-    # 使用列表形式传递参数给subprocess是更安全、更推荐的做法
     cmd_args = [
         'python', 'train/train_jsbsim.py',
         '--env-name', envname,
@@ -268,7 +267,7 @@ def singleArgs():
         '--experiment-name', exp,
         '--seed', str(seed),
         '--n-training-threads', '1',
-        '--n-rollout-threads', '1',  # shell脚本中此值为32
+        '--n-rollout-threads', '16',  #
         '--cuda',
         '--log-interval', '1',
         '--save-interval', '1',
