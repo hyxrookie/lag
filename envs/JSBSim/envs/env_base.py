@@ -30,6 +30,7 @@ class BaseEnv(gymnasium.Env):
         self.center_lon, self.center_lat, self.center_alt = \
             getattr(self.config, 'battle_field_center', (120.0, 60.0, 0.0))
         self._create_records = False
+        self.current_step = 0
         self.load()
 
     @property

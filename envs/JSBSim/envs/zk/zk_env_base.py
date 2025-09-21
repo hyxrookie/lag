@@ -1,32 +1,27 @@
 import collections
 import gzip
+import json
+import logging
+import os
 import random
+import socket
 import struct
 import subprocess
-
-import numpy as np
-from typing import Tuple, Dict, Any, Set, Union
-from .env_base import BaseEnv
-import os
 import time
+import gymnasium
+from gymnasium.utils import seeding
+import numpy as np
+from typing import Dict, Any, Tuple, Set, Union
 
-from ..core.simulatior import AircraftSimulator
-from ..core.zk.zk_simulatior import Aircraft, Missile
-from ..tasks.multiplecombat_task import HierarchicalMultipleCombatShootTask, HierarchicalMultipleCombatTask, MultipleCombatTask
-import socket
-import json
-
-from ..tasks.zk_task import ZKHierarchicalMultipleCombatTask, ZKHierarchicalMultipleCombatShootTask
+from envs.JSBSim.core.zk.zk_simulatior import Aircraft, Missile
+from envs.JSBSim.envs.env_base import BaseEnv
 
 
-class ZKCombatEnv(BaseEnv):
-    """
-    MultipleCombatEnv is an multi-player competitive environment.
-    """
+class ZKBaseEnv(BaseEnv):
+
     def __init__(self, config_name: str, port):
+
         super().__init__(config_name)
-        # Env-Specific initialization here!
-        self._create_records = False
 
         self.project_name = getattr(self.config, 'project_name', 'project2')
         self.excute_path = getattr(self.config, 'excute_path', "D:/ZK_20250815/Windows/ZK.exe")
@@ -172,136 +167,6 @@ class ZKCombatEnv(BaseEnv):
             print('last send', self.last_send)
             print(e)
             return None
-
-    # def load_simulator(self):
-    #     self._jsbsims = {}     # type: Dict[str, AircraftSimulator]
-    #     for uid, config in self.config.aircraft_configs.items():
-    #         self._jsbsims[uid] = AircraftSimulator(
-    #             uid=uid,
-    #             color=config.get("color", "Red"),
-    #             model=config.get("model", "f16"),
-    #             init_state=config.get("init_state"),
-    #             origin=getattr(self.config, 'battle_field_center', (120.0, 60.0, 0.0)),
-    #             sim_freq=self.sim_freq,
-    #             num_missiles=config.get("missile", 0))
-    #     # Different teams have different uid[0]
-    #     _default_team_uid = list(self._jsbsims.keys())[0][0]
-    #     self.ego_ids = [uid for uid in self._jsbsims.keys() if uid[0] == _default_team_uid]
-    #     self.enm_ids = [uid for uid in self._jsbsims.keys() if uid[0] != _default_team_uid]
-    #
-    #     # Link jsbsims
-    #     for key, sim in self._jsbsims.items():
-    #         for k, s in self._jsbsims.items():
-    #             if k == key:
-    #                 pass
-    #             elif k[0] == key[0]:
-    #                 sim.partners.append(s)
-    #             else:
-    #                 sim.enemies.append(s)
-    #
-    #     self._tempsims = {}    # type: Dict[str, BaseSimulator]
-    @property
-    def share_observation_space(self):
-        return self.task.share_observation_space
-
-    def load_task(self):
-        taskname = getattr(self.config, 'task', None)
-        if taskname == 'multiplecombat':
-            self.task = MultipleCombatTask(self.config)
-        elif taskname == 'hierarchical_multiplecombat':
-            self.task = HierarchicalMultipleCombatTask(self.config)
-        elif taskname == 'hierarchical_multiplecombat_shoot':
-            self.task = HierarchicalMultipleCombatShootTask(self.config)
-        elif taskname == "zk_hierarchical_multiplecombat_shoot":
-            self.task = ZKHierarchicalMultipleCombatShootTask(self.config)
-        else:
-            raise NotImplementedError(f"Unknown taskname: {taskname}")
-
-    def reset(self) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
-        """Resets the state of the environment and returns an initial observation.
-
-        Returns:
-            obs (dict): {agent_id: initial observation}
-            share_obs (dict): {agent_id: initial state}
-        """
-        self.current_step = 0
-        self._zk_sims.clear()
-        self._zk_missiles.clear()
-        # self.reset_simulators()
-
-        red_x, red_y, red_psi, red_v, blue_x, blue_y, blue_psi, blue_v, h = self.get_common_init_pos()
-        reset_attribute = self.reset_variable(red_x, red_y, red_psi, red_v, blue_x,
-                                         blue_y, blue_psi, blue_v, h, self.red_num, self.blue_num)
-        init_info = {'red': reset_attribute['red'],
-                     'blue': reset_attribute['blue']}
-        if self.INITIAL is False:
-            self.INITIAL = True
-            init_info['flag'] = {'init': {'render': self.RENDER, 'save': 0}}
-        else:
-            # print("reset-------------")
-            init_info['flag'] = {'reset': {'render': self.RENDER}}
-        self._send_condition(init_info)
-
-        zk_obs = self._accept_from_socket()
-        self.update_from_obs(zk_obs)
-        self.task.reset(self)
-        obs = self.get_obs()
-        share_obs = self.get_state()
-
-        return self._pack(obs), self._pack(share_obs)
-
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
-        """Run one timestep of the environment's dynamics. When end of
-        episode is reached, you are responsible for calling `reset()`
-        to reset this environment's observation. Accepts an action and
-        returns a tuple (observation, reward_visualize, done, info).
-
-        Args:
-            action (dict): the agents' actions, each key corresponds to an agent_id
-
-        Returns:
-            (tuple):
-                obs: agents' observation of the current environment
-                share_obs: agents' share observation of the current environment
-                rewards: amount of rewards returned after previous actions
-                dones: whether the episode has ended, in which case further step() calls are undefined
-                info: auxiliary information
-        """
-        self.current_step += 1
-        info = {"current_step": self.current_step}
-        # print("self.current_step:{}".format(self.current_step))
-        # apply actions
-        action = self._unpack(action)
-        send_action = self.postprocess_action(action)
-
-
-        self._send_condition(send_action)
-        zk_obs = self._accept_from_socket()
-        # print("zk_obs:{}".format(zk_obs) )
-        self.update_from_obs(zk_obs)
-        self.task.reset(self)
-        obs = self.get_obs()
-        share_obs = self.get_state()
-
-        rewards = {}
-        for agent_id in self.agents.keys():
-            reward, info = self.task.get_reward(self, agent_id, info)
-            rewards[agent_id] = [reward]
-        ego_reward = np.mean([rewards[ego_id] for ego_id in self.ego_ids])
-        enm_reward = np.mean([rewards[enm_id] for enm_id in self.enm_ids])
-        for ego_id in self.ego_ids:
-            rewards[ego_id] = [ego_reward]
-        for enm_id in self.enm_ids:
-            rewards[enm_id] = [enm_reward]
-        #
-        dones = {}
-        for agent_id in self.agents.keys():
-            done, info = self.task.get_termination(self, agent_id, info)
-            dones[agent_id] = [done]
-
-
-        return self._pack(obs), self._pack(share_obs), self._pack(rewards), self._pack(dones), info
-
     def postprocess_action(self, action_dict):
         """处理多智能体动作"""
         action_input = {'red': {}, 'blue': {}}
@@ -449,9 +314,6 @@ class ZKCombatEnv(BaseEnv):
         """
         # 遍历管理器中的每一架飞机
         for subject_aircraft in self._zk_sims.values():
-            TargetEnterAttackRange = subject_aircraft.get("TargetEnterAttackRange")
-            if TargetEnterAttackRange > 0:
-                print("TargetEnterAttackRange:{}".format(TargetEnterAttackRange))
             # 在每次更新前，清空旧的连接关系列表
             subject_aircraft.partners.clear()
             subject_aircraft.enemies.clear()
@@ -495,7 +357,7 @@ class ZKCombatEnv(BaseEnv):
 
     @staticmethod
     def get_common_init_pos():
-        max_range = 0.25
+        max_range = 0.6
         red_y = 0.5 * np.random.random() - 0.25
         blue_y = 0.5 * np.random.random() - 0.25
         initial_pos_set = {

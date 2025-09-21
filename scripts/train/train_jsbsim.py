@@ -11,15 +11,17 @@ import numpy as np
 from pathlib import Path
 import setproctitle
 
-from envs.JSBSim.envs.zk_env import ZKCombatEnv
-from runner.share_zk_runner import ShareZKRunner
+
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+from envs.JSBSim.envs.zk import ZKMultipleCombatEnv, ZKSingleCombatEnv
+from runner.selfplay_zk_runner import SelfplayZKRunner
+from runner.share_zk_runner import ShareZKRunner
 from config import get_config
 from runner.share_jsbsim_runner import ShareJSBSimRunner
 from envs.JSBSim.envs import SingleCombatEnv, SingleControlEnv, MultipleCombatEnv
 from envs.env_wrappers import SubprocVecEnv, DummyVecEnv, ShareSubprocVecEnv, ShareDummyVecEnv
-from runner.tacview import Tacview
+
 
 def make_train_env(all_args):
     def get_env_fn(rank):
@@ -31,7 +33,9 @@ def make_train_env(all_args):
             elif all_args.env_name == "MultipleCombat":
                 env = MultipleCombatEnv(all_args.scenario_name)
             elif all_args.env_name == "ZKMultipleCombat":
-                env = ZKCombatEnv(all_args.scenario_name, rank * 2)
+                env = ZKMultipleCombatEnv(all_args.scenario_name, rank * 2)
+            elif all_args.env_name == "ZKSingleCombat":
+                env = ZKSingleCombatEnv(all_args.scenario_name, rank * 2)
             else:
                 logging.error("Can not support the " + all_args.env_name + "environment.")
                 raise NotImplementedError
@@ -60,7 +64,9 @@ def make_eval_env(all_args):
             elif all_args.env_name == "MultipleCombat":
                 env = MultipleCombatEnv(all_args.scenario_name)
             elif all_args.env_name == "ZKMultipleCombat":
-                env = ZKCombatEnv(all_args.scenario_name, rank * 2 - 1)
+                env = ZKMultipleCombatEnv(all_args.scenario_name, rank * 2 - 1)
+            elif all_args.env_name == "ZKSingleCombat":
+                env = ZKSingleCombatEnv(all_args.scenario_name, rank * 2 - 1)
             else:
                 logging.error("Can not support the " + all_args.env_name + "environment.")
                 raise NotImplementedError
@@ -163,6 +169,8 @@ def main(args):
         runner = ShareJSBSimRunner(config)
     elif all_args.env_name == "ZKMultipleCombat":
         runner = ShareZKRunner(config)
+    elif all_args.env_name == "ZKSingleCombat":
+        runner = SelfplayZKRunner(config)
     else:
         if all_args.use_selfplay:
             from runner.selfplay_jsbsim_runner import SelfplayJSBSimRunner as Runner
@@ -186,56 +194,115 @@ def exit():
     os.system("ps -ef|grep ZK.x86_64|grep -v grep |awk '{print $2}'|xargs kill -9")
     os.system("taskkill /F /IM ZK.exe")
 
+def multArgs():
+    envname = "ZKMultipleCombat"
+    scenario = "zk/4v4/HierarchySelfplay"
+    algo = "mappo"
+    exp = "v1"
+    seed = 0
+
+    print(f"env is {envname}, scenario is {scenario}, algo is {algo}, exp is {exp}, seed is {seed}")
+
+    # 设置CUDA设备
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+    # 构建命令参数列表
+    cmd_args = [
+        '--env-name', envname,
+        '--algorithm-name', algo,
+        '--scenario-name', scenario,
+        '--experiment-name', exp,
+        '--seed', str(seed),
+        '--n-training-threads', '1',
+        '--n-rollout-threads', '1',
+        '--cuda',
+        '--log-interval', '1',
+        '--save-interval', '1',
+        '--num-mini-batch', '5',
+        '--buffer-size', '3000',
+        '--num-env-steps', '1e8',
+        '--lr', '3e-4',
+        '--gamma', '0.99',
+        '--ppo-epoch', '4',
+        '--clip-params', '0.2',
+        '--max-grad-norm', '2',
+        '--entropy-coef', '1e-3',
+        '--hidden-size', '128 128',
+        '--act-hidden-size', '128 128',
+        '--recurrent-hidden-size', '128',
+        '--recurrent-hidden-layers', '1',
+        '--data-chunk-length', '8',
+        '--use-selfplay',
+        '--selfplay-algorithm', 'fsp',
+        '--n-choose-opponents', '1',
+        '--use-eval',
+        '--n-eval-rollout-threads', '1',
+        '--eval-interval', '1',
+        '--eval-episodes', '1',
+        '--user-name', 'jyh',
+    ]
+    return cmd_args
+
+def singleArgs():
+    # 1. 定义参数变量 (与shell脚本保持一致)
+    envname = "ZKSingleCombat"
+    scenario = "zk/1v1/HierarchySelfplay"
+    algo = "ppo"
+    exp = "v1"
+    seed = 1
+
+    # 2. 打印参数信息 (对应shell脚本中的echo)
+    print(f"env is {envname}, scenario is {scenario}, algo is {algo}, exp is {exp}, seed is {seed}")
+
+    # 3. 设置环境变量 (对应shell脚本中的 CUDA_VISIBLE_DEVICES=1)
+    # 注意：os.environ中的值必须是字符串
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+    # 4. 构建命令参数列表
+    # 使用列表形式传递参数给subprocess是更安全、更推荐的做法
+    cmd_args = [
+        'python', 'train/train_jsbsim.py',
+        '--env-name', envname,
+        '--algorithm-name', algo,
+        '--scenario-name', scenario,
+        '--experiment-name', exp,
+        '--seed', str(seed),
+        '--n-training-threads', '1',
+        '--n-rollout-threads', '1',  # shell脚本中此值为32
+        '--cuda',
+        '--log-interval', '1',
+        '--save-interval', '1',
+        '--use-selfplay',
+        '--selfplay-algorithm', 'fsp',
+        '--n-choose-opponents', '1',
+        '--use-eval',
+        '--n-eval-rollout-threads', '1',
+        '--eval-interval', '1',
+        '--eval-episodes', '1',
+        '--num-mini-batch', '5',
+        '--buffer-size', '3000',
+        '--num-env-steps', '1e8',
+        '--lr', '3e-4',
+        '--gamma', '0.99',
+        '--ppo-epoch', '4',
+        '--clip-params', '0.2',
+        '--max-grad-norm', '2',
+        '--entropy-coef', '1e-3',
+        '--hidden-size', '128 128',
+        '--act-hidden-size', '128 128',
+        '--recurrent-hidden-size', '128',
+        '--recurrent-hidden-layers', '1',
+        '--data-chunk-length', '8',
+        '--user-name', 'jyh',
+        '--wandb-name', 'thu_jsbsim',  # shell脚本中新增的参数
+        '--use-prior'  # shell脚本中新增的参数
+    ]
+    return cmd_args
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    #
-    # envname = "ZKMultipleCombat"
-    # scenario = "zk/4v4/HierarchySelfplay"
-    # algo = "mappo"
-    # exp = "v1"
-    # seed = 0
-    #
-    # print(f"env is {envname}, scenario is {scenario}, algo is {algo}, exp is {exp}, seed is {seed}")
-    #
-    # # 设置CUDA设备
-    # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    #
-    # # 构建命令参数列表
-    # cmd_args = [
-    #     'python', 'train/train_jsbsim.py',
-    #     '--env-name', envname,
-    #     '--algorithm-name', algo,
-    #     '--scenario-name', scenario,
-    #     '--experiment-name', exp,
-    #     '--seed', str(seed),
-    #     '--n-training-threads', '1',
-    #     '--n-rollout-threads', '1',
-    #     '--cuda',
-    #     '--log-interval', '1',
-    #     '--save-interval', '1',
-    #     '--num-mini-batch', '5',
-    #     '--buffer-size', '3000',
-    #     '--num-env-steps', '1e8',
-    #     '--lr', '3e-4',
-    #     '--gamma', '0.99',
-    #     '--ppo-epoch', '4',
-    #     '--clip-params', '0.2',
-    #     '--max-grad-norm', '2',
-    #     '--entropy-coef', '1e-3',
-    #     '--hidden-size', '128 128',
-    #     '--act-hidden-size', '128 128',
-    #     '--recurrent-hidden-size', '128',
-    #     '--recurrent-hidden-layers', '1',
-    #     '--data-chunk-length', '8',
-    #     '--use-selfplay',
-    #     '--selfplay-algorithm', 'fsp',
-    #     '--n-choose-opponents', '1',
-    #     '--use-eval',
-    #     '--n-eval-rollout-threads', '1',
-    #     '--eval-interval', '1',
-    #     '--eval-episodes', '1',
-    #     '--user-name', 'jyh',
-    # ]
-    # main(cmd_args)
-    main(sys.argv[1:])
+
+
+    # main(multArgs())
+    main(singleArgs())
+    # main(sys.argv[1:])

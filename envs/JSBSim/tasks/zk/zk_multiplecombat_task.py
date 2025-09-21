@@ -3,19 +3,19 @@ from gymnasium import spaces
 from typing import Tuple
 import torch
 
-from ..reward_functions.zk.zk_altitude_reward import ZKAltitudeReward
-from ..reward_functions.zk.zk_event_driven_reward import ZKEventDrivenReward
-from ..reward_functions.zk.zk_missile_posture_reward import ZKMissilePostureReward
-from ..reward_functions.zk.zk_posture_reward import ZKPostureReward
-from ..tasks import SingleCombatTask
-from ..core.catalog import Catalog as c
-from ..core.simulatior import MissileSimulator
-from ..reward_functions import AltitudeReward, PostureReward, EventDrivenReward, MissilePostureReward
-from ..termination_conditions import ExtremeState, LowAltitude, Overload, Timeout, SafeReturn
-from ..termination_conditions.zk.zk_safe_return import ZKSafeReturn
-from ..termination_conditions.zk.zk_timeout import ZKTimeout
-from ..utils.utils import get_AO_TA_R, LLA2NEU, get_root_dir
-from ..model.baseline_actor import BaselineActor
+from envs.JSBSim.reward_functions.zk.zk_altitude_reward import ZKAltitudeReward
+from envs.JSBSim.reward_functions.zk.zk_event_driven_reward import ZKEventDrivenReward
+from envs.JSBSim.reward_functions.zk.zk_missile_posture_reward import ZKMissilePostureReward
+from envs.JSBSim.reward_functions.zk.zk_posture_reward import ZKPostureReward
+from envs.JSBSim.tasks import SingleCombatTask
+from envs.JSBSim.core.catalog import Catalog as c
+from envs.JSBSim.core.simulatior import MissileSimulator
+from envs.JSBSim.reward_functions import AltitudeReward, PostureReward, EventDrivenReward, MissilePostureReward
+from envs.JSBSim.termination_conditions import ExtremeState, LowAltitude, Overload, Timeout, SafeReturn
+from envs.JSBSim.termination_conditions.zk.zk_safe_return import ZKSafeReturn
+from envs.JSBSim.termination_conditions.zk.zk_timeout import ZKTimeout
+from envs.JSBSim.utils.utils import get_AO_TA_R, LLA2NEU, get_root_dir
+from envs.JSBSim.model.baseline_actor import BaselineActor
 
 
 
@@ -260,6 +260,7 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
         raw_obs = self.get_obs(env, agent_id)
         input_obs = np.zeros(12)
         # (1) delta altitude/heading/velocity
+        print("action:{}".format(action))
         input_obs[0] = self.norm_delta_altitude[action[0]]
         input_obs[1] = self.norm_delta_heading[action[1]]
         input_obs[2] = self.norm_delta_velocity[action[2]]
