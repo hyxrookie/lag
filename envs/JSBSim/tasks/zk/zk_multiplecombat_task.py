@@ -260,7 +260,6 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
         raw_obs = self.get_obs(env, agent_id)
         input_obs = np.zeros(12)
         # (1) delta altitude/heading/velocity
-        print("action:{}".format(action))
         input_obs[0] = self.norm_delta_altitude[action[0]]
         input_obs[1] = self.norm_delta_heading[action[1]]
         input_obs[2] = self.norm_delta_velocity[action[2]]
