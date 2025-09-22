@@ -58,7 +58,8 @@ class Aircraft:
         self.partners: List['Aircraft'] = []  # 友机列表, 通讯模式0-0下全部友军
         self.enemies: List['Aircraft'] = []  # 敌机列表， 通讯模式0-0下全部敌军
 
-        self.detected_enemies: List['Aircraft'] = []  # 全队共享的雷达探测敌军列表，每个友军的TargetIntoView求并集， 比如red_0，一个飞机看不到，  red_1能看到所有的。 red_0的detected_enemies也是所有的
+        self.share_detected_enemies: List['Aircraft'] = []  # 全队共享的雷达探测敌军列表，每个友军的TargetIntoView求并集， 比如red_0，一个飞机看不到，  red_1能看到所有的。 red_0的detected_enemies也是所有的
+        self.single_detected_enemies: List['Aircraft'] = []  # 个人的雷达探测敌军列表
         self.launched_missiles: List[Missile] = []  # 本机已发射的导弹列表
         self.under_missiles: List[Missile] = []  # 正在攻击本机的敌方导弹列表
 

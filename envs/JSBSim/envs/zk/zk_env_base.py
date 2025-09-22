@@ -337,7 +337,7 @@ class ZKBaseEnv(BaseEnv):
         for aircraft in self._zk_sims.values():
             target_view_str = str(int(aircraft.get("TargetIntoView")) or "0")
             enemy_team_name = "blue" if aircraft.key == "red" else "red"
-
+            aircraft.single_detected_enemies.clear()
             for i, char in enumerate(target_view_str[::-1]):
                 if char == '1':
                     enemy_name = f"{enemy_team_name}_{i}"
@@ -345,6 +345,7 @@ class ZKBaseEnv(BaseEnv):
                         enemy_aircraft = self.agents[enemy_name]
                         # 将探测到的敌机加入自己阵营的探测集合中
                         temp_detected_sets[aircraft.key].add(enemy_aircraft)
+                        aircraft.single_detected_enemies.append(enemy_aircraft)
         # 将计算结果（集合）转换为最终的共享列表，存储在局部字典中
         team_detected_lists = {
             "red": sorted(list(temp_detected_sets["red"]), key=lambda x: x.uid),
@@ -353,7 +354,7 @@ class ZKBaseEnv(BaseEnv):
         # --- 步骤 3: 为每架飞机链接到团队共享的探测列表 ---
         for aircraft in self._zk_sims.values():
             # 直接将属性指向局部字典中对应的共享列表
-            aircraft.detected_enemies = team_detected_lists[aircraft.key]
+            aircraft.share_detected_enemies = team_detected_lists[aircraft.key]
 
     @staticmethod
     def get_common_init_pos():
