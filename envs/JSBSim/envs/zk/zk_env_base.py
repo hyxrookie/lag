@@ -267,7 +267,7 @@ class ZKBaseEnv(BaseEnv):
                 # 2. 解码并查找当前帧的目标实体
                 current_target_name = self._decode_entity_code(missile_obs.get("Target"))
                 current_target_sim = None
-                if current_target_sim is not None and current_target_sim in self.agents:
+                if current_target_name is not None:
                     current_target_sim = self.agents[current_target_name]
 
                 # 3. 调用增强的 set_target 方法，它会自动处理目标是否变化
