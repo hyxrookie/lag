@@ -179,8 +179,8 @@ class ZKBaseEnv(BaseEnv):
             action_input[agent.key][agent.uid] = {
                 'mode': 0,
                 "fcs/aileron-cmd-norm": norm_action[0],
-                "fcs/rudder-cmd-norm": norm_action[1],
-                "fcs/elevator-cmd-norm": norm_action[2],
+                "fcs/elevator-cmd-norm": norm_action[1],
+                "fcs/rudder-cmd-norm": norm_action[2],
                 "fcs/throttle-cmd-norm": norm_action[3],
                 "fcs/weapon-launch": norm_action[4],
                 # "switch-missile": random.randint(0, 1),
