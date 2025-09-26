@@ -11,10 +11,11 @@ import time
 import gymnasium
 from gymnasium.utils import seeding
 import numpy as np
-from typing import Dict, Any, Tuple, Set, Union
+from typing import Dict, Any, Tuple, Set, Union, Optional, List
 
 from envs.JSBSim.core.zk.zk_simulatior import Aircraft, Missile
 from envs.JSBSim.envs.env_base import BaseEnv
+from envs.JSBSim.utils.utils import get_AO_TA_R
 
 
 class ZKBaseEnv(BaseEnv):
@@ -33,10 +34,13 @@ class ZKBaseEnv(BaseEnv):
         self.INITIAL = False
         is_success = False
         self.last_send = {}
+        self._last_shoot_time = None
+        self.min_attack_interval = getattr(self.config, 'min_attack_interval', 125)
 
         self._zk_sims = {}  # type: Dict[str, Aircraft]
         self._zk_missiles = {}  # type: Dict[str, Missile]
         self.process = None
+        self.ruleBasedController = RuleBasedController()
         while not is_success:
             try:
                 # 这一部分代码完全不用修改，因为我们使用了参数列表
@@ -174,7 +178,12 @@ class ZKBaseEnv(BaseEnv):
         for agent_id, action in action_dict.items():
             agent = self.agents[agent_id]
             norm_action = self.task.normalize_action(self, agent_id, action)
-
+            rule_decide = self.ruleBasedController.decide(self, agent)
+            shoot_interval = self.current_step - self._last_shoot_time[agent_id]
+            shoot_flag = shoot_interval > self.min_attack_interval and norm_action[4] == 1 and \
+                         rule_decide['fcs/weapon-launch'] == 1
+            if shoot_flag:
+                self._last_shoot_time[agent_id] = self.current_step
             # 构建动作命令
             action_input[agent.key][agent.uid] = {
                 'mode': 0,
@@ -182,9 +191,10 @@ class ZKBaseEnv(BaseEnv):
                 "fcs/elevator-cmd-norm": norm_action[1],
                 "fcs/rudder-cmd-norm": norm_action[2],
                 "fcs/throttle-cmd-norm": norm_action[3],
-                "fcs/weapon-launch": norm_action[4],
-                # "switch-missile": random.randint(0, 1),
-                "change-target": 8,
+                "fcs/weapon-launch": 1 if shoot_flag else 0,
+                "switch-missile": rule_decide['switch-missile'],
+                "switch-acmType ": rule_decide['switch-acmType'],
+                "change-target": rule_decide['change-target'],
             }
 
         return action_input
@@ -251,6 +261,7 @@ class ZKBaseEnv(BaseEnv):
                             missile_instance = Missile.create(
                                 missile_type=m_type,
                                 number=int(m_num_str),
+                                uid=missile_name,
                                 parent=parent_sim,
                                 target=target_sim
                             )
@@ -424,3 +435,260 @@ class ZKBaseEnv(BaseEnv):
                     "ic/roc-fpm": 0, "ic/psi-true-deg": blue_psi
                 }
         return reset_attribute
+
+
+class RuleBasedController:
+    """
+    一个无状态的、反应式的无人机对抗规则控制器。
+    它在每个时间步都根据当前的战场“事实”做出最优决策，
+    代码简洁且健壮。
+    """
+
+    def __init__(self, sraam_max_range_m=18000.0, crm_preferred_min_range_m=20000.0):
+        self.SRAAM_MAX_RANGE_M = sraam_max_range_m
+        self.CRM_PREFERRED_MIN_RANGE_M = crm_preferred_min_range_m
+
+    # --- 辅助方法 (无需改动) ---
+
+    def _parse_id_from_name(self, name: str) -> Optional[int]:
+        try:
+            return int(name.split('_')[-1])
+        except (ValueError, IndexError):
+            return None
+
+    def _parse_target_list_string(self, target_str: str) -> List[int]:
+        if not target_str or not isinstance(target_str, str): return []
+        return [int(tid) for tid in target_str.split('/') if tid.isdigit()]
+
+    def _find_priority_target(self, agent: Aircraft) -> Tuple[Optional[Aircraft], float]:
+
+        priority_target = None
+        target_distance = 210000.0
+        agent_feature = np.hstack([agent.get_position(), agent.get_velocity()])
+        for enm in agent.single_detected_enemies:
+            if enm.is_alive:
+                enm_feature = np.hstack([enm.get_position(), enm.get_velocity()])
+                _, _, r = get_AO_TA_R(agent_feature, enm_feature)
+                if r < target_distance:
+                    priority_target = enm
+                    target_distance = r
+
+        return priority_target, target_distance
+
+    # --- 主决策方法 (无状态逻辑) ---
+
+    def decide(self, env: ZKBaseEnv, agent: Aircraft) -> Dict:
+        """为给定的Agent状态生成一套无状态的、反应式的规则化指令。"""
+        # 1. 初始化指令, 目标控制先默认让系统自动锁定
+        commands = {
+            'fcs/weapon-launch': 0, 'switch-missile': 0,
+            'switch-acmType': 0, 'change-target': 9
+        }
+        # 2. 态势感知
+        priority_target, target_distance = self._find_priority_target(agent)
+        # 3. 防御优先检查
+        if agent.get('MissileAlert') == 1 or priority_target is None:
+            return commands
+
+        AimMode = agent.get("AimMode")
+
+        # 4. 武器系统管理
+        if target_distance < self.SRAAM_MAX_RANGE_M and agent.get('SRAAMCurrentNum') > 0 and AimMode == 1:
+            commands['switch-missile'] = 1
+        elif target_distance > self.CRM_PREFERRED_MIN_RANGE_M and agent.get('AMRAAMCurrentNum') > 0 and AimMode == 0:
+            commands['switch-missile'] = 1
+
+        if AimMode == 0:
+            alt_diff = abs(agent.get('position/h-sl-ft') - priority_target.get('position/h-sl-ft'))
+            if alt_diff > 5000 and agent.get("ACMaimMode") == 0:
+                commands['switch-acmType'] = 1
+            elif alt_diff < 4500 and agent.get("ACMaimMode") == 1:
+                commands['switch-acmType'] = 1
+
+        # 如果切换武器指令生效， 就直接返回切换武器， 否则切换武器和后面的目标锁定， 武器发射可能会冲突
+        if commands['switch-missile'] == 1 or commands['switch-acmType'] == 1:
+            return commands
+
+        # 5. 发射决策 (核心区别点)
+        # 直接检查当前状态是否满足对 priority_target 的发射条件
+        is_lock_successful = False
+        locked_id = None
+        if AimMode == 0:  # 近程弹
+            is_lock_successful = (agent.get('SRAAMTargetLocked') != 9)
+            if is_lock_successful:
+                locked_id = self.get_priority_sraam_target(agent, agent.get('SRAAMTargetLocked'))
+        elif AimMode == 1:  # 中程弹
+            is_lock_successful = (agent.get('AMRAAMlockedTarget') != 9999)
+            if is_lock_successful:
+                locked_id = self.get_priority_amraam_target(agent, agent.get('AMRAAMlockedTarget'))
+
+        if not is_lock_successful:
+            change_target = self.generate_lock_command([priority_target.uid])
+            commands['change-target'] = change_target
+            return commands
+        if locked_id is not None:
+            locked_agent = env.agents[locked_id]
+            agent_feature = np.hstack([agent.get_position(), agent.get_velocity()])
+            locked_agent_feature = np.hstack([locked_agent.get_position(), locked_agent.get_velocity()])
+            _, _, r = get_AO_TA_R(agent_feature, locked_agent_feature)
+            # 其他条件检查 (包线, 武器就绪)
+            envelope_min = agent.get('EnvelopeMin')
+            envelope_max = agent.get('EnvelopeMax')
+            is_in_envelope = envelope_min <= r <= envelope_max
+            # 发射决策
+            if is_lock_successful and is_in_envelope:
+                commands['fcs/weapon-launch'] = 1
+            return commands
+
+        return commands
+
+    def generate_lock_command(self, target_names: List[str]) -> int:
+        """
+        根据要锁定的敌方飞机名称列表，生成对应的整数指令。
+
+        该函数基于10的幂次规则：
+        - 'blue_0' -> 10^0 = 1
+        - 'blue_1' -> 10^1 = 10
+        - 'blue_2' -> 10^2 = 100
+        最终指令是所有目标对应值的总和。
+
+        参数:
+            target_names (List[str]): 一个包含敌机名称字符串的列表。
+                                      例如: ['blue_0', 'blue_3']
+
+        返回:
+            int: 计算出的最终锁定指令。如果列表为空，返回0。
+        """
+        command = 0
+        if not target_names:
+            return 0
+
+        for name in target_names:
+            try:
+                # 从 'blue_3' 这样的字符串中分离出数字 '3'
+                parts = name.split('_')
+                if len(parts) > 1 and parts[-1].isdigit():
+                    enemy_index = int(parts[-1])
+                    # 计算 10 的幂并加到总指令中
+                    command += 10 ** enemy_index
+                else:
+                    print(f"警告: 无法从 '{name}' 中解析敌机编号，已跳过。")
+            except ValueError:
+                print(f"警告: '{name}' 中的编号部分不是有效数字，已跳过。")
+            except Exception as e:
+                print(f"处理 '{name}' 时发生未知错误: {e}，已跳过。")
+
+        return command
+
+    def get_priority_amraam_target(self, agent: Aircraft,
+                                   locked_target_value: Union[float, int, None],
+                                   ) -> Optional[str]:
+        """
+        解析 AMRAAMlockedTarget 的编码值，并根据新规则返回最高优先级的目标全名。
+
+        新优先规则:
+        - 从左到右，遇到的第一个非'9'的数字即为最高优先级目标。
+        - 例如，对于值 3199，最高优先级目标是 3，而不是 1。
+
+        新返回格式:
+        - 函数根据 agent_name 判断其阵营（'red' 或 'blue'）。
+        - 如果 agent 是 'red'，则返回 'blue_X' 格式的名称。
+        - 如果 agent 是 'blue'，则返回 'red_X' 格式的名称。
+
+        参数:
+            locked_target_value (Union[float, int, None]):
+                从平台获取的 AMRAAMlockedTarget 值。
+            agent_name (str):
+                执行此决策的Agent的名称，例如 "red_0" 或 "blue_1"。
+
+        返回:
+            Optional[str]: 最高优先级敌机的完整名称 (如 "blue_3")。
+                           如果没有锁定目标或输入无效，则返回 None。
+        """
+        # --- 步骤 1: 预处理输入 (与之前相同) ---
+        locked_value_as_int = 0
+        try:
+            if locked_target_value is None: return None
+            locked_value_as_int = int(locked_target_value)
+        except (ValueError, TypeError):
+            print(f"警告: 无效的 AMRAAMlockedTarget 输入 '{locked_target_value}'，无法解析。")
+            return None
+
+        # --- 步骤 2: 判断敌方阵营 (新逻辑) ---
+        target_team_prefix = ""
+        if 'red' in agent.key:
+            target_team_prefix = "blue"
+        elif 'blue' in agent.key:
+            target_team_prefix = "red"
+        else:
+            print(f"警告: 无法从 agent_name '{agent.key}' 判断阵营。")
+            return None
+
+        # --- 步骤 3: 核心解析逻辑 (实现新的优先规则) ---
+
+        # 处理哨兵值
+        if locked_value_as_int == 9999:
+            return None
+
+        # 转换为4位字符串
+        target_str = f"{locked_value_as_int:04d}"
+
+        # 遍历字符串，找到第一个非'9'的字符
+        for digit_char in target_str:
+            if digit_char != '9':
+                # 找到了！这就是最高优先级的目标
+                priority_target_id = int(digit_char)
+                # 构建完整的敌机名称并立即返回
+                return f"{target_team_prefix}_{priority_target_id}"
+
+        # 如果循环结束都没有找到 (例如值是9999)，则没有锁定目标
+        return None
+
+    def get_priority_sraam_target(self, agent: Aircraft,
+                                  locked_target_value: Union[float, int, None],
+                                  ) -> Optional[str]:
+        """
+        解析 SRAAMlockedTarget 的编码值，并根据新规则返回最高优先级的目标全名。
+
+        新优先规则:
+        - 如果是9表示没有锁定， 如果不是9就是锁定的id
+
+        新返回格式:
+        - 函数根据 agent_name 判断其阵营（'red' 或 'blue'）。
+        - 如果 agent 是 'red'，则返回 'blue_X' 格式的名称。
+        - 如果 agent 是 'blue'，则返回 'red_X' 格式的名称。
+
+        参数:
+            locked_target_value (Union[float, int, None]):
+                从平台获取的 SRAAMlockedTarget 值。
+            agent_name (str):
+                执行此决策的Agent的名称，例如 "red_0" 或 "blue_1"。
+
+        返回:
+            Optional[str]: 最高优先级敌机的完整名称 (如 "blue_3")。
+                           如果没有锁定目标或输入无效，则返回 None。
+        """
+        # 预处理输入
+        try:
+            if locked_target_value is None:
+                return None
+            locked_value_as_int = int(locked_target_value)
+        except (ValueError, TypeError):
+            print(f"警告: 无效的 SRAAMTargetLocked 输入 '{locked_target_value}'，无法解析。")
+            return None
+
+        # 判断敌方阵营
+        if 'red' in agent.key:
+            target_team_prefix = "blue"
+        elif 'blue' in agent.key:
+            target_team_prefix = "red"
+        else:
+            print(f"警告: 无法从 agent_name '{agent.key}' 判断阵营。")
+            return None
+
+        # 处理哨兵值
+        if locked_value_as_int == 9:
+            return None
+
+        # 直接返回锁定的目标ID
+        return f"{target_team_prefix}_{locked_value_as_int}"

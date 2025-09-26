@@ -3,6 +3,11 @@ from gymnasium import spaces
 from typing import Tuple
 import torch
 
+from envs.JSBSim.reward_functions.zk.MissileEvasionReward import MissileEvasionReward
+from envs.JSBSim.reward_functions.zk.PatrolStateReward import PatrolStateReward
+from envs.JSBSim.reward_functions.zk.RadarWarningReward import RadarWarningReward
+from envs.JSBSim.reward_functions.zk.SituationalAwarenessReward import SituationalAwarenessReward
+from envs.JSBSim.reward_functions.zk.TacticalDetectionReward import TacticalDetectionReward
 from envs.JSBSim.reward_functions.zk.zk_altitude_reward import ZKAltitudeReward
 from envs.JSBSim.reward_functions.zk.zk_event_driven_reward import ZKEventDrivenReward
 from envs.JSBSim.reward_functions.zk.zk_missile_posture_reward import ZKMissilePostureReward
@@ -181,7 +186,12 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
         self.min_attack_interval = getattr(self.config, 'min_attack_interval', 125)
         self.reward_functions = [
             # ZKPostureReward(self.config),
-            ZKMissilePostureReward(self.config),
+            # ZKMissilePostureReward(self.config),
+            PatrolStateReward(self.config),
+            RadarWarningReward(self.config),
+            MissileEvasionReward(self.config),
+            SituationalAwarenessReward(self.config),
+            TacticalDetectionReward(self.config),
             ZKAltitudeReward(self.config),
             ZKEventDrivenReward(self.config)
         ]
@@ -204,7 +214,7 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
         velocity = agent.get_velocity()
         rpy = agent.get_rpy()
 
-        norm_obs[0] = geodetic[2] / 5000  # 0. ego altitude   (unit: 5km)
+        norm_obs[0] = position[2] / 5000  # 0. ego altitude   (unit: 5km)
         norm_obs[1] = np.sin(rpy[0])  # 1. ego_roll_sin
         norm_obs[2] = np.cos(rpy[0])  # 2. ego_roll_cos
         norm_obs[3] = np.sin(rpy[1])  # 3. ego_pitch_sin
@@ -223,12 +233,13 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
             AO, TA, R, side_flag = get_AO_TA_R(agent_feature, sim_feature, return_side=True)
             # print("距离R:{}".format(R))
             norm_obs[offset + 1] = (sim.get("velocities/u-fps") - agent.get("velocities/u-fps")) / 1116.44
-            norm_obs[offset + 2] = (sim_geodetic[2] - geodetic[2]) / 1000
+            norm_obs[offset + 2] = (sim_geodetic[2] - position[2]) / 1000
             norm_obs[offset + 3] = AO
             norm_obs[offset + 4] = TA
             norm_obs[offset + 5] = R / 10000
             norm_obs[offset + 6] = side_flag
             offset += 6
+        offset = 50
         norm_obs = np.clip(norm_obs, self.observation_space.low, self.observation_space.high)
         # (3) missile info TODO: multiple missile and parnter's missile?
         missile_sim = env.agents[agent_id].check_missile_warning()  #
@@ -237,7 +248,7 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
             missile_feature = np.hstack([missile_sim.get_position(), missile_sim.get_velocity()])
             ego_AO, ego_TA, R, side_flag = get_AO_TA_R(agent_feature, missile_feature, return_side=True)
             norm_obs[offset + 1] = (missile_sim.get("Speed") - agent.get("velocities/u-fps")) / 1116.44
-            norm_obs[offset + 2] = (missile_sim_geodetic[2] - geodetic[2]) / 1000
+            norm_obs[offset + 2] = (missile_sim_geodetic[2] - position[2]) / 1000
             norm_obs[offset + 3] = ego_AO
             norm_obs[offset + 4] = ego_TA
             norm_obs[offset + 5] = R / 10000

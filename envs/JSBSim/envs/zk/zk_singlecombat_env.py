@@ -48,6 +48,7 @@ class ZKSingleCombatEnv(ZKBaseEnv):
             obs (dict): {agent_id: initial observation}
             share_obs (dict): {agent_id: initial state}
         """
+        self._last_shoot_time = {agent_id: -self.min_attack_interval for agent_id in self.agents.keys()}
         self.current_step = 0
         self._zk_sims.clear()
         self._zk_missiles.clear()

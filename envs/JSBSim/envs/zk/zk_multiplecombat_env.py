@@ -1,3 +1,7 @@
+import json
+import os
+from datetime import datetime
+
 import numpy as np
 from typing import Tuple, Dict
 
@@ -64,6 +68,8 @@ class ZKMultipleCombatEnv(ZKBaseEnv):
         obs = self.get_obs()
         share_obs = self.get_state()
 
+        self._last_shoot_time = {agent_id: -self.min_attack_interval for agent_id in self.agents.keys()}
+
         return self._pack(obs), self._pack(share_obs)
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
@@ -93,7 +99,6 @@ class ZKMultipleCombatEnv(ZKBaseEnv):
 
         self._send_condition(send_action)
         zk_obs = self._accept_from_socket()
-        # print("zk_obs:{}".format(zk_obs) )
         self.update_from_obs(zk_obs)
         self.task.step(self)
         obs = self.get_obs()
@@ -111,11 +116,64 @@ class ZKMultipleCombatEnv(ZKBaseEnv):
             rewards[enm_id] = [enm_reward]
         #
         dones = {}
+        is_global_done = False
+
         for agent_id in self.agents.keys():
             done, info = self.task.get_termination(self, agent_id, info)
+            if 'out_side_time' in info:
+                is_global_done = True
+                break
+
             dones[agent_id] = [done]
+
+        if is_global_done:
+            # 如果是全局结束，则覆盖所有agent的done状态为True
+            for agent_id in self.agents.keys():
+                dones[agent_id] = [True]
 
 
         return self._pack(obs), self._pack(share_obs), self._pack(rewards), self._pack(dones), info
 
 
+def save_zk_obs_append(zk_obs, filename="zk_obs_log.jsonl", directory="zk_obs_logs"):
+    """
+    将 zk_obs 数据追加到文件中（每行一个 JSON 对象）
+    适合连续记录多个观察数据
+
+    参数:
+        zk_obs: 从 socket 接收到的观察数据（字典格式）
+        filename: 文件名，默认为 "zk_obs_log.jsonl"
+        directory: 保存目录，默认为 "zk_obs_logs"
+
+    返回:
+        str: 保存的文件路径，如果保存失败则返回 None
+    """
+    try:
+        # 检查数据是否有效
+        if zk_obs is None:
+            print("警告: zk_obs 数据为空，不保存文件")
+            return None
+
+        # 创建目录（如果不存在）
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # 完整文件路径
+        filepath = os.path.join(directory, filename)
+
+        # 添加时间戳到数据中
+        zk_obs_with_timestamp = {
+            "timestamp": datetime.now().isoformat(),
+            "data": zk_obs
+        }
+
+        # 追加到文件
+        with open(filepath, 'a', encoding='utf-8') as f:
+            json.dump(zk_obs_with_timestamp, f, ensure_ascii=False)
+            f.write('\n')
+
+        return filepath
+
+    except Exception as e:
+        print(f"追加 zk_obs 数据时出错: {e}")
+        return None

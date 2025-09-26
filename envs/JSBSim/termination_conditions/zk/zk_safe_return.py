@@ -38,6 +38,7 @@ class ZKSafeReturn(BaseTerminationCondition):
             return True, False, info
         elif env.agents[agent_id].out_side_time > 25:
             self.log(f'{agent_id} has out_side_time too long! has crashed Total Steps={env.current_step}')
+            info['out_side_time'] = env.agents[agent_id].out_side_time
             return True, False, info
 
         # all the enemy-aircrafts has been destroyed while current aircraft is not under attack
