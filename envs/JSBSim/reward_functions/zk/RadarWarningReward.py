@@ -15,8 +15,8 @@ class RadarWarningReward(BaseRewardFunction):
         super().__init__(config)
 
         self.reward_on_break_lock = getattr(self.config, 'reward_on_break_lock', 20.0)
-        self.penalty_per_step_under_lock = getattr(self.config, 'penalty_per_step_under_lock', -1.0)
-        self.grace_period_steps = getattr(self.config, 'grace_period_steps', 25)  # 5秒反应时间
+        self.penalty_per_step_under_lock = getattr(self.config, 'penalty_per_step_under_lock', -20.0)
+        self.grace_period_steps = getattr(self.config, 'grace_period_steps', 10)  # 5秒反应时间
 
         # 【关键】为“摆脱锁定”奖励增加冷却期
         self.break_lock_cooldown_steps = getattr(self.config, 'break_lock_cooldown_steps', 100)  # 20秒冷却
@@ -42,12 +42,15 @@ class RadarWarningReward(BaseRewardFunction):
             if agent_id not in self.lock_start_steps:
                 self.lock_start_steps[agent_id] = current_step
                 return 0.0
-            else:
-                lock_duration = current_step - self.lock_start_steps[agent_id]
-                if lock_duration > self.grace_period_steps:
-                    return self._process(self.penalty_per_step_under_lock, agent_id)
-                else:
-                    return 0.0
+
+            return self._process(self.penalty_per_step_under_lock, agent_id)
+            #
+            # else:
+            #     lock_duration = current_step - self.lock_start_steps[agent_id]
+            #     if lock_duration > self.grace_period_steps:
+            #         return self._process(self.penalty_per_step_under_lock, agent_id)
+            #     else:
+            #         return 0.0
 
         # --- 2. 如果威胁已解除 ---
         else:
