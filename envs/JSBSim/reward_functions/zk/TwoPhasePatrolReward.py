@@ -35,6 +35,8 @@ class TwoPhasePatrolReward(BaseRewardFunction):
         self.w_sustain = getattr(self.config, 'w_sustain', 3.0)
         self.w_stability = getattr(self.config, 'w_stability', 0.3)
 
+        self._target_energy = None
+
     def reset(self, task, env):
         # 此版本不需要存储历史状态来进行能量计算
         return super().reset(task, env)
