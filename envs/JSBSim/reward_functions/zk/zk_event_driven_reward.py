@@ -53,7 +53,7 @@ class ZKEventDrivenReward(BaseRewardFunction):
             self.crashed_agents.add(agent_id)
 
         # 遍历飞机发射的所有导弹
-        for missile in agent.launch_missiles:
+        for missile in agent.launched_missiles:
             # 检查导弹是否成功命中，并且这个成功事件是第一次被奖励
             # 我们用导弹的唯一ID (missile.id) 来做标识
             if missile.is_success and missile.uid not in self.rewarded_missiles:

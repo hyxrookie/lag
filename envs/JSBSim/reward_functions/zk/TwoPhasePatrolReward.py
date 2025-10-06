@@ -14,8 +14,8 @@ class TwoPhasePatrolReward(BaseRewardFunction):
     def __init__(self, config):
         super().__init__(config)
         # --- 目标状态定义 ---
-        self.H_TARGET_FT = 35000.0
-        self.V_TARGET_FPS = 875.8
+        self.H_TARGET_FT = 30000.0
+        self.V_TARGET_FPS = 895.8
 
         # --- 阶段切换的容差范围 ---
         self.H_TOLERANCE_FT = 2000.0
@@ -24,6 +24,8 @@ class TwoPhasePatrolReward(BaseRewardFunction):
         # --- 宽松的姿态限制 ---
         self.MAX_AOA_DEG = 20.0
         self.MAX_PITCH_RAD = math.radians(60.0)
+
+        self.ENERGY_THRESHOLD_PCT = 0.95
 
         # --- 物理常数 ---
         self.G_FPS2 = 32.174
@@ -35,8 +37,25 @@ class TwoPhasePatrolReward(BaseRewardFunction):
 
     def reset(self, task, env):
         # 此版本不需要存储历史状态来进行能量计算
-        pass
+        return super().reset(task, env)
 
+    def _get_total_energy(self, altitude_ft, velocity_fps, total_mass_slug, total_weight_lbs):
+        """辅助函数：根据输入计算总能量"""
+        potential_energy = total_weight_lbs * altitude_ft
+        kinetic_energy = 0.5 * total_mass_slug * (velocity_fps ** 2)
+        return potential_energy + kinetic_energy
+
+    def _calculate_target_energy(self, agent):
+        """计算并缓存目标状态下的总能量"""
+        # 注意：目标能量会随燃油消耗而轻微变化，这里我们简化为使用当前质量计算
+        body_mass_slug = agent.get_property_value("inertia/mass-slugs")
+        fuel_weight_lbs = agent.get_property_value("propulsion/tank-contents-lbs")
+        total_mass_slug = body_mass_slug + (fuel_weight_lbs / self.G_FPS2)
+        total_weight_lbs = total_mass_slug * self.G_FPS2
+
+        self._target_energy = self._get_total_energy(self.H_TARGET_FT, self.V_TARGET_FPS, total_mass_slug,
+                                                     total_weight_lbs)
+        return self._target_energy
     def get_reward(self, task, env, agent_id):
         agent = env.agents[agent_id]
 
@@ -69,10 +88,13 @@ class TwoPhasePatrolReward(BaseRewardFunction):
         # --- 3. 核心奖励逻辑 ---
         alt_error = abs(current_altitude_ft - self.H_TARGET_FT)
         vel_error = abs(current_velocity_fps - self.V_TARGET_FPS)
-        in_sustain_zone = (alt_error < self.H_TOLERANCE_FT) and (vel_error < self.V_TOLERANCE_FPS)
 
+        current_energy = self._get_total_energy(current_altitude_ft, current_velocity_fps, total_mass_slug,
+                                                total_weight_lbs)
+        if self._target_energy is None:
+            self._calculate_target_energy(agent)
         R_main = 0.0
-        if not in_sustain_zone:
+        if current_energy < self._target_energy * self.ENERGY_THRESHOLD_PCT:
             # 阶段一: 能量积累 (使用精确的瞬时加速度)
             dEp_dt = total_weight_lbs * h_dot_fps
             dEk_dt = total_mass_slug * current_velocity_fps * tangential_accel_fps2
