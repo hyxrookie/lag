@@ -35,11 +35,11 @@ class ZKHierarchicalSingleCombatShootTask(SingleCombatTask):
         ]
 
     def load_observation_space(self):
-        self.observation_space = spaces.Box(low=-10, high=10., shape=(21,))
+        self.observation_space = spaces.Box(low=-10, high=10., shape=(22,))
 
     def load_action_space(self):
         # altitude control + heading control + velocity control + shoot control
-        self.action_space = spaces.Tuple([spaces.MultiDiscrete([3, 5, 3]), spaces.Discrete(2)])
+        self.action_space = spaces.MultiDiscrete([3, 5, 3])
 
     def get_obs(self, env, agent_id):
         """
@@ -72,7 +72,7 @@ class ZKHierarchicalSingleCombatShootTask(SingleCombatTask):
                    - [19] relative distance
                    - [20] side flag
                """
-        norm_obs = np.zeros(21)
+        norm_obs = np.zeros(22)
         # (1) ego info normalization
         agent = env.agents[agent_id]
         agent_feature = np.hstack([agent.get_position(), agent.get_velocity()])
@@ -105,6 +105,7 @@ class ZKHierarchicalSingleCombatShootTask(SingleCombatTask):
         norm_obs[offset + 4] = TA
         norm_obs[offset + 5] = R / 10000
         norm_obs[offset + 6] = side_flag
+        norm_obs[offset + 7] = 1 #剩余弹量
         offset += 6
         norm_obs = np.clip(norm_obs, self.observation_space.low, self.observation_space.high)
         # (3) missile info TODO: multiple missile and parnter's missile?
@@ -123,7 +124,10 @@ class ZKHierarchicalSingleCombatShootTask(SingleCombatTask):
 
     def normalize_action(self, env, agent_id, action):
         action = action.astype(np.int32)
-        shoot = action[3] > 0 if 1 else 0
+        if len(action) > 3:
+            shoot = action[3] > 0 if 1 else 0
+        else:
+            shoot = 1
         """Convert high-level action into low-level action.
         """
         # generate low-level input_obs
