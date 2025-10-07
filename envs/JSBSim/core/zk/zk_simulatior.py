@@ -102,7 +102,7 @@ class Aircraft:
             agent_feature = np.hstack([self.get_position(), self.get_velocity()])
             missile_feature = np.hstack([missile.get_position(), missile.get_velocity()])
             _, _, R = get_AO_TA_R(agent_feature, missile_feature)
-            if R < 25000:
+            if R < 20000:
                 detected_missiles.append(missile)
         return detected_missiles
 
@@ -214,110 +214,120 @@ class Aircraft:
         """内部方法，用于生成观测字典键和类内部属性之间的映射关系。"""
         # 键中的连字符'-' 在类属性中用下划线'_'代替
         mapping = {
-            # Position and Attitude
-            'position/h-sl-ft': (self.position_and_attitude, 'h_sl_ft'),
-            'attitude/pitch-rad': (self.position_and_attitude, 'pitch_rad'),
-            'attitude/roll-rad': (self.position_and_attitude, 'roll_rad'),
-            'attitude/psi-deg': (self.position_and_attitude, 'psi_deg'),
-            'aero/beta-deg': (self.position_and_attitude, 'beta_deg'),
-            'aero/alpha-deg': (self.position_and_attitude, 'alpha_deg'),
-            'position/lat-geod-deg': (self.position_and_attitude, 'lat_geod_deg'),
-            'position/long-gc-deg': (self.position_and_attitude, 'long_gc_deg'),
-            # Inertia
-            'inertia/mass-slugs': (self.inertia, 'mass_slugs'),
-            'inertia/ixx-slugs_ft2': (self.inertia, 'ixx_slugs_ft2'),
-            'inertia/iyy-slugs_ft2': (self.inertia, 'iyy_slugs_ft2'),
-            'inertia/izz-slugs_ft2': (self.inertia, 'izz_slugs_ft2'),
-            'inertia/ixy-slugs_ft2': (self.inertia, 'ixy_slugs_ft2'),
-            'inertia/ixz-slugs_ft2': (self.inertia, 'ixz_slugs_ft2'),
-            'inertia/iyz-slugs_ft2': (self.inertia, 'iyz_slugs_ft2'),
-            # Velocities
-            'velocities/u-fps': (self.velocities, 'u_fps'),
-            'velocities/v-fps': (self.velocities, 'v_fps'),
-            'velocities/w-fps': (self.velocities, 'w_fps'),
-            'velocities/v-north-fps': (self.velocities, 'v_north_fps'),
-            'velocities/v-east-fps': (self.velocities, 'v_east_fps'),
-            'velocities/v-down-fps': (self.velocities, 'v_down_fps'),
-            'velocities/p-rad_sec': (self.velocities, 'p_rad_sec'),
-            'velocities/q-rad_sec': (self.velocities, 'q_rad_sec'),
-            'velocities/r-rad_sec': (self.velocities, 'r_rad_sec'),
-            'velocities/ve-fps': (self.velocities, 've_fps'),
-            'velocities/h-dot-fps': (self.velocities, 'h_dot_fps'),
-            'velocities/mach': (self.velocities, 'mach'),
-            # Accelerations
-            'accelerations/a-pilot-x-ft_sec2': (self.accelerations, 'a_pilot_x_ft_sec2'),
-            'accelerations/a-pilot-y-ft_sec2': (self.accelerations, 'a_pilot_y_ft_sec2'),
-            'accelerations/a-pilot-z-ft_sec2': (self.accelerations, 'a_pilot_z_ft_sec2'),
-            'accelerations/n-pilot-x-norm': (self.accelerations, 'n_pilot_x_norm'),
-            'accelerations/n-pilot-y-norm': (self.accelerations, 'n_pilot_y_norm'),
-            'accelerations/n-pilot-z-norm': (self.accelerations, 'n_pilot_z_norm'),
-            # Control State
-            'forces/load-factor': (self.control_state, 'load_factor'),
-            'fcs/left-aileron-pos-norm': (self.control_state, 'left_aileron_pos_norm'),
-            'fcs/elevator-pos-norm': (self.control_state, 'elevator_pos_norm'),
-            'fcs/rudder-pos-norm': (self.control_state, 'rudder_pos_norm'),
-            'fcs/throttle-pos-norm': (self.control_state, 'throttle_pos_norm'),
-            'gear/gear-pos-norm': (self.control_state, 'gear_pos_norm'),
-            # Engines
-            'propulsion/engine/set-running': (self.engines, 'set_running'),
-            'propulsion/set-running': (self.engines, 'set_running'),
-            'propulsion/engine/thrust-lbs': (self.engines, 'thrust_lbs'),
-            'propulsion/tank/contents-lbs': (self.engines, 'contents_lbs'),
-            'propulsion/tank/pct-full': (self.engines, 'pct_full'),
-            # Controls Command
-            'fcs/aileron-cmd-norm': (self.controls_command, 'aileron_cmd_norm'),
-            'fcs/elevator-cmd-norm': (self.controls_command, 'elevator_cmd_norm'),
-            'fcs/rudder-cmd-norm': (self.controls_command, 'rudder_cmd_norm'),
-            'fcs/throttle-cmd-norm': (self.controls_command, 'throttle_cmd_norm'),
-            'fcs/mixture-cmd-norm': (self.controls_command, 'mixture_cmd_norm'),
-            'fcs/throttle-cmd-norm[1]': (self.controls_command, 'throttle_cmd_norm_1'),
-            'fcs/mixture-cmd-norm[1]': (self.controls_command, 'mixture_cmd_norm_1'),
-            'gear/gear-cmd-norm': (self.controls_command, 'gear_cmd_norm'),
-            # Simulation
-            'simulation/dt': (self.simulation, 'dt'),
-            'simulation/sim-time-sec': (self.simulation, 'sim_time_sec'),
-            # Initial Conditions
-            'ic/h-sl-ft': (self.initial_conditions, 'h_sl_ft'),
-            'ic/terrain-elevation-ft': (self.initial_conditions, 'terrain_elevation_ft'),
-            'ic/long-gc-deg': (self.initial_conditions, 'long_gc_deg'),
-            'ic/lat-geod-deg': (self.initial_conditions, 'lat_geod_deg'),
-            'ic/u-fps': (self.initial_conditions, 'u_fps'),
-            'ic/v-fps': (self.initial_conditions, 'v_fps'),
-            'ic/w-fps': (self.initial_conditions, 'w_fps'),
-            'ic/p-rad_sec': (self.initial_conditions, 'p_rad_sec'),
-            'ic/q-rad_sec': (self.initial_conditions, 'q_rad_sec'),
-            'ic/r-rad_sec': (self.initial_conditions, 'r_rad_sec'),
-            'ic/roc-fpm': (self.initial_conditions, 'roc_fpm'),
-            'ic/psi-true-deg': (self.initial_conditions, 'psi_true_deg'),
-            'ic/phi-deg': (self.initial_conditions, 'phi_deg'),
-            'ic/theta-deg': (self.initial_conditions, 'theta_deg'),
-            # Battle Info
-            'LifeCurrent': (self.battle_info, 'LifeCurrent'),
-            'BulletCurrentNum': (self.battle_info, 'BulletCurrentNum'),
-            'IfOverHeat': (self.battle_info, 'IfOverHeat'),
-            'TargetIntoView': (self.battle_info, 'TargetIntoView'),
-            'AllyIntoView': (self.battle_info, 'AllyIntoView'),
-            'TargetEnterAttackRange': (self.battle_info, 'TargetEnterAttackRange'),
-            'AimMode': (self.battle_info, 'AimMode'),
-            'ACMaimMode': (self.battle_info, 'ACMaimMode'),
-            'SRAAMCurrentNum': (self.battle_info, 'SRAAMCurrentNum'),
-            'SRAAM1_CanReload': (self.battle_info, 'SRAAM1_CanReload'),
-            'SRAAM2_CanReload': (self.battle_info, 'SRAAM2_CanReload'),
-            'SRAAMTargetLocked': (self.battle_info, 'SRAAMTargetLocked'),
-            'AMRAAMCurrentNum': (self.battle_info, 'AMRAAMCurrentNum'),
-            'AMRAAM1_CanReload': (self.battle_info, 'AMRAAM1_CanReload'),
-            'AMRAAM2_CanReload': (self.battle_info, 'AMRAAM2_CanReload'),
-            'AMRAAM3_CanReload': (self.battle_info, 'AMRAAM3_CanReload'),
-            'AMRAAM4_CanReload': (self.battle_info, 'AMRAAM4_CanReload'),
-            'AMRAAMlockedTarget': (self.battle_info, 'AMRAAMlockedTarget'),
-            'MissileAlert': (self.battle_info, 'MissileAlert'),
-            'WarningNumber': (self.battle_info, 'WarningNumber'),
-            'IsOutOfValidBattleArea': (self.battle_info, 'IsOutOfValidBattleArea'),
+            # Position and Attitude (位置坐标及姿态)
+            'position/h-sl-ft': (self.position_and_attitude, 'h_sl_ft'),  # 海拔高度 [ft]
+            'attitude/pitch-rad': (self.position_and_attitude, 'pitch_rad'),  # 俯仰角 [rad]
+            'attitude/roll-rad': (self.position_and_attitude, 'roll_rad'),  # 翻滚角 [rad]
+            'attitude/psi-deg': (self.position_and_attitude, 'psi_deg'),  # 航向角 [度]
+            'aero/beta-deg': (self.position_and_attitude, 'beta_deg'),  # 侧滑角 [度]
+            'aero/alpha-deg': (self.position_and_attitude, 'alpha_deg'),  # 攻角 [度]
+            'position/lat-geod-deg': (self.position_and_attitude, 'lat_geod_deg'),  # 纬度 [度]
+            'position/long-gc-deg': (self.position_and_attitude, 'long_gc_deg'),  # 经度 [度]
+
+            # Inertia (惯性)
+            'inertia/mass-slugs': (self.inertia, 'mass_slugs'),  # 飞机当前质量 [slug]
+            'inertia/ixx-slugs_ft2': (self.inertia, 'ixx_slugs_ft2'),  # 绕x轴的转动惯量 [slugs/ft^2]
+            'inertia/iyy-slugs_ft2': (self.inertia, 'iyy_slugs_ft2'),  # 绕y轴的转动惯量 [slugs/ft^2]
+            'inertia/izz-slugs_ft2': (self.inertia, 'izz_slugs_ft2'),  # 绕z轴的转动惯量 [slugs/ft^2]
+            'inertia/ixy-slugs_ft2': (self.inertia, 'ixy_slugs_ft2'),  # 关于xy平面的惯性积 [slugs/ft^2]
+            'inertia/ixz-slugs_ft2': (self.inertia, 'ixz_slugs_ft2'),  # 关于xz平面的惯性积 [slugs/ft^2]
+            'inertia/iyz-slugs_ft2': (self.inertia, 'iyz_slugs_ft2'),  # 关于yz平面的惯性积 [slugs/ft^2]
+
+            # Velocities (速度)
+            'velocities/u-fps': (self.velocities, 'u_fps'),  # 机体坐标系 x 轴速度 [ft/s]
+            'velocities/v-fps': (self.velocities, 'v_fps'),  # 机体坐标系 y 轴速度 [ft/s]
+            'velocities/w-fps': (self.velocities, 'w_fps'),  # 机体坐标系 z 轴速度 [ft/s]
+            'velocities/v-north-fps': (self.velocities, 'v_north_fps'),  # 北方向速度 [ft/s]
+            'velocities/v-east-fps': (self.velocities, 'v_east_fps'),  # 东方向速度 [ft/s]
+            'velocities/v-down-fps': (self.velocities, 'v_down_fps'),  # 向下方向速度 [ft/s]
+            'velocities/p-rad_sec': (self.velocities, 'p_rad_sec'),  # 翻滚速率 [rad/s]
+            'velocities/q-rad_sec': (self.velocities, 'q_rad_sec'),  # 俯仰速率 [rad/s]
+            'velocities/r-rad_sec': (self.velocities, 'r_rad_sec'),  # 偏航速率 [rad/s]
+            'velocities/ve-fps': (self.velocities, 've_fps'),  # 真实速度 [ft/s]
+            'velocities/h-dot-fps': (self.velocities, 'h_dot_fps'),  # 高度变化速率 [ft/s]
+            'velocities/mach': (self.velocities, 'mach'),  # 马赫 [M]
+
+            # Accelerations (加速度)
+            'accelerations/a-pilot-x-ft_sec2': (self.accelerations, 'a_pilot_x_ft_sec2'),  # 飞机坐标系 x轴加速度 [ft/s^2]
+            'accelerations/a-pilot-y-ft_sec2': (self.accelerations, 'a_pilot_y_ft_sec2'),  # 飞机坐标系 y轴加速度 [ft/s^2]
+            'accelerations/a-pilot-z-ft_sec2': (self.accelerations, 'a_pilot_z_ft_sec2'),  # 飞机坐标系 z轴加速度 [ft/s^2]
+            'accelerations/n-pilot-x-norm': (self.accelerations, 'n_pilot_x_norm'),  # 飞机坐标系 x轴过载
+            'accelerations/n-pilot-y-norm': (self.accelerations, 'n_pilot_y_norm'),  # 飞机坐标系 y轴过载
+            'accelerations/n-pilot-z-norm': (self.accelerations, 'n_pilot_z_norm'),  # 飞机坐标系 z轴过载
+
+            # Control State (控制状态)
+            'forces/load-factor': (self.control_state, 'load_factor'),  # 负载系数
+            'fcs/left-aileron-pos-norm': (self.control_state, 'left_aileron_pos_norm'),  # 左副翼位置 (-1,1)
+            'fcs/elevator-pos-norm': (self.control_state, 'elevator_pos_norm'),  # 升降舵位置 (-1,1)
+            'fcs/rudder-pos-norm': (self.control_state, 'rudder_pos_norm'),  # 方向舵位置 (-1,1)
+            'fcs/throttle-pos-norm': (self.control_state, 'throttle_pos_norm'),  # 油门位置 (0,1)
+            'gear/gear-pos-norm': (self.control_state, 'gear_pos_norm'),  # 起落架位置 (0,1)
+
+            # Engines (引擎)
+            'propulsion/engine/set-running': (self.engines, 'set_running'),  # 发动机运转状态
+            'propulsion/set-running': (self.engines, 'set_running'),  # 设置引擎运行
+            'propulsion/engine/thrust-lbs': (self.engines, 'thrust_lbs'),  # 发动机推力 [lb]
+            'propulsion/tank/contents-lbs': (self.engines, 'contents_lbs'),  # 油箱中剩余油量 [lb]
+            'propulsion/tank/pct-full': (self.engines, 'pct_full'),  # 油箱油量百分比
+
+            # Controls Command (控制命令)
+            'fcs/aileron-cmd-norm': (self.controls_command, 'aileron_cmd_norm'),  # 副翼指令 (-1,1)
+            'fcs/elevator-cmd-norm': (self.controls_command, 'elevator_cmd_norm'),  # 升降舵指令 (-1,1)
+            'fcs/rudder-cmd-norm': (self.controls_command, 'rudder_cmd_norm'),  # 方向舵指令 (-1,1)
+            'fcs/throttle-cmd-norm': (self.controls_command, 'throttle_cmd_norm'),  # 油门指令 (0,1)
+            'fcs/mixture-cmd-norm': (self.controls_command, 'mixture_cmd_norm'),  # 发动机混合设置 (0,1)
+            'fcs/throttle-cmd-norm[1]': (self.controls_command, 'throttle_cmd_norm_1'),  # 油门1指令位置 (0,1)
+            'fcs/mixture-cmd-norm[1]': (self.controls_command, 'mixture_cmd_norm_1'),  # 油料混合调整阀1设置 (0,1)
+            'gear/gear-cmd-norm': (self.controls_command, 'gear_cmd_norm'),  # 所有起落架指令位置 (0,1)
+
+            # Simulation (模拟)
+            'simulation/dt': (self.simulation, 'dt'),  # JSBSim仿真时间步长 [s]
+            'simulation/sim-time-sec': (self.simulation, 'sim_time_sec'),  # 模拟时间 [s]
+
+            # Initial Conditions (初始条件)
+            'ic/h-sl-ft': (self.initial_conditions, 'h_sl_ft'),  # 初始高度 [ft]
+            'ic/terrain-elevation-ft': (self.initial_conditions, 'terrain_elevation_ft'),  # 初始地形高度 [ft]
+            'ic/long-gc-deg': (self.initial_conditions, 'long_gc_deg'),  # 初始经度 [度]
+            'ic/lat-geod-deg': (self.initial_conditions, 'lat_geod_deg'),  # 初始纬度 [度]
+            'ic/u-fps': (self.initial_conditions, 'u_fps'),  # 机体坐标系 x 轴初始速度 [ft/s]
+            'ic/v-fps': (self.initial_conditions, 'v_fps'),  # 机体坐标系 y 轴初始速度 [ft/s]
+            'ic/w-fps': (self.initial_conditions, 'w_fps'),  # 机体坐标系 z 轴初始速度 [ft/s]
+            'ic/p-rad_sec': (self.initial_conditions, 'p_rad_sec'),  # 初始翻滚角速度 [rad/s]
+            'ic/q-rad_sec': (self.initial_conditions, 'q_rad_sec'),  # 初始俯仰角速度 [rad/s]
+            'ic/r-rad_sec': (self.initial_conditions, 'r_rad_sec'),  # 初始偏航角速度 [rad/s]
+            'ic/roc-fpm': (self.initial_conditions, 'roc_fpm'),  # 初始爬升速率 [ft/min]
+            'ic/psi-true-deg': (self.initial_conditions, 'psi_true_deg'),  # 初始航向 [度]
+            'ic/phi-deg': (self.initial_conditions, 'phi_deg'),  # 初始滚转角 [度]
+            'ic/theta-deg': (self.initial_conditions, 'theta_deg'),  # 初始俯仰角 [度]
+
+            # Battle Info (战场信息)
+            'LifeCurrent': (self.battle_info, 'LifeCurrent'),  # 当前生命值
+            'BulletCurrentNum': (self.battle_info, 'BulletCurrentNum'),  # 当前子弹数量
+            'IfOverHeat': (self.battle_info, 'IfOverHeat'),  # 机枪是否过热 [0/1]
+            'TargetIntoView': (self.battle_info, 'TargetIntoView'),  # 进入视野的敌机编号
+            'AllyIntoView': (self.battle_info, 'AllyIntoView'),  # 进入视野的盟友编号
+            'TargetEnterAttackRange': (self.battle_info, 'TargetEnterAttackRange'),  # 进入攻击范围的目标编号
+            'AimMode': (self.battle_info, 'AimMode'),  # 导弹模式切换
+            'ACMaimMode': (self.battle_info, 'ACMaimMode'),  # ACM扫描模式
+            'SRAAMCurrentNum': (self.battle_info, 'SRAAMCurrentNum'),  # 近程红外弹数量
+            'SRAAM1_CanReload': (self.battle_info, 'SRAAM1_CanReload'),  # 近程红外弹1是否可装填 [0/1]
+            'SRAAM2_CanReload': (self.battle_info, 'SRAAM2_CanReload'),  # 近程红外弹2是否可装填 [0/1]
+            'SRAAMTargetLocked': (self.battle_info, 'SRAAMTargetLocked'),  # 锁定的近程红外弹目标
+            'AMRAAMCurrentNum': (self.battle_info, 'AMRAAMCurrentNum'),  # 中程雷达弹剩余数量
+            'AMRAAM1_CanReload': (self.battle_info, 'AMRAAM1_CanReload'),  # 中程雷达弹1是否可装填 [0/1]
+            'AMRAAM2_CanReload': (self.battle_info, 'AMRAAM2_CanReload'),  # 中程雷达弹2是否可装填 [0/1]
+            'AMRAAM3_CanReload': (self.battle_info, 'AMRAAM3_CanReload'),  # 中程雷达弹3是否可装填 [0/1]
+            'AMRAAM4_CanReload': (self.battle_info, 'AMRAAM4_CanReload'),  # 中程雷达弹4是否可装填 [0/1]
+            'AMRAAMlockedTarget': (self.battle_info, 'AMRAAMlockedTarget'),  # 锁定的中程雷达弹目标
+            'MissileAlert': (self.battle_info, 'MissileAlert'),  # 是否被雷达弹锁定 [1/0]
+            'WarningNumber': (self.battle_info, 'WarningNumber'),  # 告警编号
+            'IsOutOfValidBattleArea': (self.battle_info, 'IsOutOfValidBattleArea'),  # 战机是否在战区外 [1/0]
             'OutOfValidBattleAreaCurrentDuration': (self.battle_info, 'OutOfValidBattleAreaCurrentDuration'),
-            'IfPresenceHitting': (self.battle_info, 'IfPresenceHitting'),
-            'EnvelopeMax': (self.battle_info, 'EnvelopeMax'),
-            'EnvelopeMin': (self.battle_info, 'EnvelopeMin'),
-            'DeathEvent': (self.battle_info, 'DeathEvent'),
+            # 战机在战区外停留时长 [s]
+            'IfPresenceHitting': (self.battle_info, 'IfPresenceHitting'),  # 是否存在该战机发射的导弹 [1/0]
+            'EnvelopeMax': (self.battle_info, 'EnvelopeMax'),  # 导弹包线远边界
+            'EnvelopeMin': (self.battle_info, 'EnvelopeMin'),  # 导弹包线近边界
+            'DeathEvent': (self.battle_info, 'DeathEvent'),  # 战机死亡事件
         }
         return mapping
 
@@ -388,6 +398,50 @@ class Aircraft:
         # 检查 self.under_missiles 列表中是否有任何仍在正常飞行的导弹
         # 导弹的 Status 为 0 表示 "正常飞行"
         return any(missile.Status == 0 for missile in self.under_missiles)
+
+    def log(self):
+        lon, lat, alt = self.get_geodetic()
+        roll, pitch, yaw = self.get_rpy() * 180 / np.pi
+        log_msg = f"{self.convert_id(self.uid)},T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
+        log_msg += f"Name=F16,"
+        log_msg += f"Color={self.key.title()}"
+        return log_msg
+
+    @staticmethod
+    def convert_id(original_id: str) -> str:
+        """
+        将 "color_index" 格式的 ID 转换为 Tacview 十六进制风格的 ID。
+        例如: "red_0" -> "A0100", "blue_3" -> "B0400"
+        """
+        try:
+            # 分割颜色和索引
+            parts = original_id.split('_')
+            color = parts[0].lower()
+            index = int(parts[1])
+
+            # 定义颜色到字母的映射
+            coalition_map = {
+                'red': 'A',
+                'blue': 'B',
+                'green': 'C',
+                # 您可以根据需要添加更多颜色映射
+            }
+
+            # 获取阵营字母，如果颜色不存在则默认为 'X'
+            coalition_char = coalition_map.get(color, 'X')
+
+            # 格式化对象编号 (索引+1，补零至两位)
+            # 例如 index=0 -> 1 -> "01"; index=10 -> 11 -> "11"
+            object_number = f"{index + 1:02d}"
+
+            # 组合成最终的 ID
+            new_id = f"{coalition_char}{object_number}00"
+
+            return new_id
+
+        except (IndexError, ValueError):
+            # 如果原始ID格式不正确，则返回原值
+            return original_id
 
     # --- 嵌套子类定义 ---
     class PositionAndAttitude:
@@ -553,7 +607,7 @@ class Missile:
     观测数据进行交互。
     """
 
-    def __init__(self, missile_type: str, number: int):
+    def __init__(self, missile_type: str, number: int, uid: str):
         """
         初始化导弹对象。
 
@@ -562,6 +616,7 @@ class Missile:
         """
         self.missile_type = missile_type  # 导弹类型, "SRAAM" 或 "AMRAAM"
         self.number = number  # 导弹的编号
+        self.uid = uid
 
         # --- 关系与交互 ---
         self.parent: Union[Aircraft, None] = None  # 发射此导弹的飞机
@@ -596,6 +651,9 @@ class Missile:
 
         # --- 新增：便捷 Get 方法 (国际标准单位) ---
 
+    def __repr__(self):
+        return f"<Missile type={self.missile_type} number={self.number}, parent={self.parent}, target={self.target}, Status = {self.Status}>"
+
     def get_geodetic(self):
         """获取大地坐标系下的位置 (经度, 纬度, 高度)。"""
         return self._geodetic
@@ -618,15 +676,36 @@ class Missile:
             parent.launched_missiles.append(self)
 
     @classmethod
-    def create(cls, missile_type: str, number: int, parent: 'Aircraft',
+    def create(cls, missile_type: str, number: int, uid: str,  parent: 'Aircraft',
                target: Union['Aircraft', None]) -> 'Missile':
         """
         【修正】工厂方法：创建、初始化并建立导弹与飞机的完整连接。
         """
-        missile = cls(missile_type, number)
+        missile = cls(missile_type, number, uid)
         missile.launch(parent)
         missile.set_target(target)
         return missile
+
+    def log(self):
+        if self.is_alive:
+            lon, lat, alt = self.get_geodetic()
+            roll, pitch, yaw = self.get_rpy() * 180 / np.pi
+            log_msg = f"{self.convert_id(self.parent.uid)}{self.number},T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
+            model = "AIM-120B" if self.missile_type == 'AMRAAM' else "AIM-9M "
+            log_msg += f"Name={model},"
+            log_msg += f"Color={self.parent.key.title()}"
+            return log_msg
+        elif self.is_done :
+            # remove missile model
+            log_msg = f"-{self.uid}\n"
+            # add explosion
+            lon, lat, alt = self.get_geodetic()
+            roll, pitch, yaw = self.get_rpy() * 180 / np.pi
+            log_msg += f"{self.convert_id(self.parent.uid)}{self.number}F,T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
+            log_msg += f"Type=Misc+Explosion,Color={self.parent.key.title()},Radius={300}"
+        else:
+            log_msg = None
+        return log_msg
 
     def set_target(self, new_target: Union[Aircraft, None]):
         """
@@ -663,6 +742,41 @@ class Missile:
             # 在所有基础参数更新后，调用辅助函数来更新派生参数
         self._update_derived_parameters()
 
+    @staticmethod
+    def convert_id(original_id: str) -> str:
+        """
+        将 "color_index" 格式的 ID 转换为 Tacview 十六进制风格的 ID。
+        例如: "red_0" -> "A0100", "blue_3" -> "B0400"
+        """
+        try:
+            # 分割颜色和索引
+            parts = original_id.split('_')
+            color = parts[0].lower()
+            index = int(parts[1])
+
+            # 定义颜色到字母的映射
+            coalition_map = {
+                'red': 'A',
+                'blue': 'B',
+                'green': 'C',
+                # 您可以根据需要添加更多颜色映射
+            }
+
+            # 获取阵营字母，如果颜色不存在则默认为 'X'
+            coalition_char = coalition_map.get(color, 'X')
+
+            # 格式化对象编号 (索引+1，补零至两位)
+            # 例如 index=0 -> 1 -> "01"; index=10 -> 11 -> "11"
+            object_number = f"{index + 1:02d}"
+
+            # 组合成最终的 ID
+            new_id = f"{coalition_char}{object_number}00"
+
+            return new_id
+
+        except (IndexError, ValueError):
+            # 如果原始ID格式不正确，则返回原值
+            return original_id
     def _update_derived_parameters(self):
         """
         使用基础参数计算并更新所有派生参数 (如 _geodetic, _velocity 等)。
@@ -725,7 +839,7 @@ class Missile:
     def is_miss(self) -> bool:
         """判断导弹是否因各种原因失的 (未击中)"""
         # Status 为 2, 3, 4, 5 都表示飞行结束但未命中
-        return self.Status in [2, 3, 4, 5]
+        return self.Status in [2, 3, 5]
 
     @property
     def is_done(self) -> bool:
