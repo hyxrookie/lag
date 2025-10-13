@@ -71,7 +71,7 @@ class ZKSingleCombatEnv(ZKBaseEnv):
         self.update_from_obs(zk_obs)
         self.task.reset(self)
         obs = self.get_obs()
-
+        self._last_shoot_time = {agent_id: -self.min_attack_interval for agent_id in self.agents.keys()}
         return self._pack(obs)
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:

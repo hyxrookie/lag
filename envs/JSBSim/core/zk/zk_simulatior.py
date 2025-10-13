@@ -102,7 +102,7 @@ class Aircraft:
             agent_feature = np.hstack([self.get_position(), self.get_velocity()])
             missile_feature = np.hstack([missile.get_position(), missile.get_velocity()])
             _, _, R = get_AO_TA_R(agent_feature, missile_feature)
-            if R < 25000:
+            if R < 20000:
                 detected_missiles.append(missile)
         return detected_missiles
 
@@ -399,6 +399,50 @@ class Aircraft:
         # 导弹的 Status 为 0 表示 "正常飞行"
         return any(missile.Status == 0 for missile in self.under_missiles)
 
+    def log(self):
+        lon, lat, alt = self.get_geodetic()
+        roll, pitch, yaw = self.get_rpy() * 180 / np.pi
+        log_msg = f"{self.convert_id(self.uid)},T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
+        log_msg += f"Name=F16,"
+        log_msg += f"Color={self.key.title()}"
+        return log_msg
+
+    @staticmethod
+    def convert_id(original_id: str) -> str:
+        """
+        将 "color_index" 格式的 ID 转换为 Tacview 十六进制风格的 ID。
+        例如: "red_0" -> "A0100", "blue_3" -> "B0400"
+        """
+        try:
+            # 分割颜色和索引
+            parts = original_id.split('_')
+            color = parts[0].lower()
+            index = int(parts[1])
+
+            # 定义颜色到字母的映射
+            coalition_map = {
+                'red': 'A',
+                'blue': 'B',
+                'green': 'C',
+                # 您可以根据需要添加更多颜色映射
+            }
+
+            # 获取阵营字母，如果颜色不存在则默认为 'X'
+            coalition_char = coalition_map.get(color, 'X')
+
+            # 格式化对象编号 (索引+1，补零至两位)
+            # 例如 index=0 -> 1 -> "01"; index=10 -> 11 -> "11"
+            object_number = f"{index + 1:02d}"
+
+            # 组合成最终的 ID
+            new_id = f"{coalition_char}{object_number}00"
+
+            return new_id
+
+        except (IndexError, ValueError):
+            # 如果原始ID格式不正确，则返回原值
+            return original_id
+
     # --- 嵌套子类定义 ---
     class PositionAndAttitude:
         """位置坐标及姿态"""
@@ -642,6 +686,27 @@ class Missile:
         missile.set_target(target)
         return missile
 
+    def log(self):
+        if self.is_alive:
+            lon, lat, alt = self.get_geodetic()
+            roll, pitch, yaw = self.get_rpy() * 180 / np.pi
+            log_msg = f"{self.convert_id(self.parent.uid)}{self.number},T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
+            model = "AIM-120B" if self.missile_type == 'AMRAAM' else "AIM-9M "
+            log_msg += f"Name={model},"
+            log_msg += f"Color={self.parent.key.title()}"
+            return log_msg
+        elif self.is_done :
+            # remove missile model
+            log_msg = f"-{self.uid}\n"
+            # add explosion
+            lon, lat, alt = self.get_geodetic()
+            roll, pitch, yaw = self.get_rpy() * 180 / np.pi
+            log_msg += f"{self.convert_id(self.parent.uid)}{self.number}F,T={lon}|{lat}|{alt}|{roll}|{pitch}|{yaw},"
+            log_msg += f"Type=Misc+Explosion,Color={self.parent.key.title()},Radius={300}"
+        else:
+            log_msg = None
+        return log_msg
+
     def set_target(self, new_target: Union[Aircraft, None]):
         """
         【升级】智能地设置或切换目标。
@@ -677,6 +742,41 @@ class Missile:
             # 在所有基础参数更新后，调用辅助函数来更新派生参数
         self._update_derived_parameters()
 
+    @staticmethod
+    def convert_id(original_id: str) -> str:
+        """
+        将 "color_index" 格式的 ID 转换为 Tacview 十六进制风格的 ID。
+        例如: "red_0" -> "A0100", "blue_3" -> "B0400"
+        """
+        try:
+            # 分割颜色和索引
+            parts = original_id.split('_')
+            color = parts[0].lower()
+            index = int(parts[1])
+
+            # 定义颜色到字母的映射
+            coalition_map = {
+                'red': 'A',
+                'blue': 'B',
+                'green': 'C',
+                # 您可以根据需要添加更多颜色映射
+            }
+
+            # 获取阵营字母，如果颜色不存在则默认为 'X'
+            coalition_char = coalition_map.get(color, 'X')
+
+            # 格式化对象编号 (索引+1，补零至两位)
+            # 例如 index=0 -> 1 -> "01"; index=10 -> 11 -> "11"
+            object_number = f"{index + 1:02d}"
+
+            # 组合成最终的 ID
+            new_id = f"{coalition_char}{object_number}00"
+
+            return new_id
+
+        except (IndexError, ValueError):
+            # 如果原始ID格式不正确，则返回原值
+            return original_id
     def _update_derived_parameters(self):
         """
         使用基础参数计算并更新所有派生参数 (如 _geodetic, _velocity 等)。

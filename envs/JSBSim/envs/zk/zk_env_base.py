@@ -369,7 +369,7 @@ class ZKBaseEnv(BaseEnv):
 
     @staticmethod
     def get_common_init_pos():
-        max_range = 0.6
+        max_range = 0.3
         red_y = 0.5 * np.random.random() - 0.25
         blue_y = 0.5 * np.random.random() - 0.25
         initial_pos_set = {
@@ -435,6 +435,63 @@ class ZKBaseEnv(BaseEnv):
                     "ic/roc-fpm": 0, "ic/psi-true-deg": blue_psi
                 }
         return reset_attribute
+
+    def render(self, mode="txt", filepath='./JSBSimRecording.txt.acmi', tacview=None):
+        """Renders the environment.
+
+        The set of supported modes varies per environment. (And some
+
+        environments do not support rendering at all.) By convention,
+
+        if mode is:
+
+        - human: print on the terminal
+        - txt: output to txt.acmi files
+        - real_time: realtime render with tacview by socket comm
+
+        Note:
+
+            Make sure that your class's metadata 'render.modes' key includes
+              the list of supported modes. It's recommended to call super()
+              in implementations to use the functionality of this method.
+        :param mode: str, the mode to render with
+        """
+        if mode == "txt":
+            if not self._create_records:
+                with open(filepath, mode='w', encoding='utf-8-sig') as f:
+                    f.write("FileType=text/acmi/tacview\n")
+                    f.write("FileVersion=2.1\n")
+                    f.write("0,ReferenceTime=2020-04-01T00:00:00Z\n")
+                self._create_records = True
+            with open(filepath, mode='a', encoding='utf-8-sig') as f:
+                timestamp = self.current_step * self.time_interval
+                f.write(f"#{timestamp:.2f}\n")
+                for sim in self._zk_sims.values():
+                    log_msg = sim.log()
+                    if log_msg is not None:
+                        f.write(log_msg + "\n")
+                for sim in self._zk_missiles.values():
+                    log_msg = sim.log()
+                    if log_msg is not None:
+                        f.write(log_msg + "\n")
+        elif mode == "real_time":
+            timestamp = self.current_step * self.time_interval
+            data = [f"#{timestamp:.2f}\n"]
+            for sim in self._zk_sims.values():
+                log_msg = sim.log()
+                if log_msg is not None:
+                    data.append(log_msg + "\n")
+
+            for sim in self._zk_missiles.values():
+                log_msg = sim.log()
+                if log_msg is not None:
+                    data.append(log_msg + "\n")
+
+            data_str = "".join(data)
+            # send data to tacview
+            tacview.send_data_to_client(data_str)
+        else:
+            raise NotImplementedError
 
 
 class RuleBasedController:
