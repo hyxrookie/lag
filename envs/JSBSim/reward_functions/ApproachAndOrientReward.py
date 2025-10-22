@@ -20,7 +20,7 @@ class ApproachAndOrientReward(BaseRewardFunction):
         self.w_orient = getattr(self.config, 'w_orient_approach', 0.4)
         self.w_approach = getattr(self.config, 'w_approach_approach', 0.6)
 
-        self.optimal_combat_range = getattr(self.config, 'optimal_combat_range', 20000)
+        self.optimal_combat_range = getattr(self.config, 'optimal_combat_range', 30000)
 
         # 奖励的放大系数
         # self.reward_scale = getattr(self.config, 'approach_reward_scale', 5.0)

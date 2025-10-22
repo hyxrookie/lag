@@ -111,8 +111,8 @@ aircraft_configs: {
     missile: 2
   }
 }
-max_attack_angle: 45        # unit: degree
-max_attack_distance: 14000  # unit: m
+max_attack_angle: 35        # unit: degree
+max_attack_distance: 37500  # unit: m
 min_attack_interval: 125     # unit: step
 
 # (lontitude, latitude, altitude)

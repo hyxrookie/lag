@@ -348,10 +348,37 @@ class MissileSimulator(BaseSimulator):
         missile.target(target)
         return missile
 
+    # def __init__(self,
+    #              uid="A0101",
+    #              color="Red",
+    #              model="AIM-9L",
+    #              dt=1 / 12):
+    #     super().__init__(uid, color, dt)
+    #     self.__status = MissileSimulator.INACTIVE
+    #     self.model = model
+    #     self.parent_aircraft = None  # type: AircraftSimulator
+    #     self.target_aircraft = None  # type: AircraftSimulator
+    #     self.render_explosion = False
+    #
+    #     # missile parameters (for AIM-9L)
+    #     self._g = 9.81      # gravitational acceleration
+    #     self._t_max = 60    # time limitation of missile life
+    #     self._t_thrust = 3  # time limitation of engine
+    #     self._Isp = 120     # average specific impulse
+    #     self._Length = 2.87
+    #     self._Diameter = 0.127
+    #     self._cD = 0.4      # aerodynamic drag factor
+    #     self._m0 = 84       # mass, unit: kg
+    #     self._dm = 6        # mass loss rate, unit: kg/s
+    #     self._K = 3         # proportionality constant of proportional navigation
+    #     self._nyz_max = 30  # max overload
+    #     self._Rc = 300      # radius of explosion, unit: m
+    #     self._v_min = 150   # minimun velocity, unit: m/s
+
     def __init__(self,
                  uid="A0101",
                  color="Red",
-                 model="AIM-9L",
+                 model="AIM-120B",
                  dt=1 / 12):
         super().__init__(uid, color, dt)
         self.__status = MissileSimulator.INACTIVE
@@ -360,20 +387,41 @@ class MissileSimulator(BaseSimulator):
         self.target_aircraft = None  # type: AircraftSimulator
         self.render_explosion = False
 
-        # missile parameters (for AIM-9L)
-        self._g = 9.81      # gravitational acceleration
-        self._t_max = 60    # time limitation of missile life
-        self._t_thrust = 3  # time limitation of engine
-        self._Isp = 120     # average specific impulse
-        self._Length = 2.87
-        self._Diameter = 0.127
-        self._cD = 0.4      # aerodynamic drag factor
-        self._m0 = 84       # mass, unit: kg
-        self._dm = 6        # mass loss rate, unit: kg/s
-        self._K = 3         # proportionality constant of proportional navigation
-        self._nyz_max = 30  # max overload
-        self._Rc = 300      # radius of explosion, unit: m
-        self._v_min = 150   # minimun velocity, unit: m/s
+        # --- 以下为根据您提供的AIM-120B参数表更新的参数 ---
+        self._g = 9.81  # 重力加速度 (m/s^2)
+
+        # 来自参数表: 自毁定时器 (s)
+        self._t_max = 80  # 导弹最大飞行时间 (s)
+
+        # 来自参数表: 加速器运行时间 (s)
+        self._t_thrust = 6  # 发动机工作时间 (s)
+
+        # 来自参数表: 重量 (kg)
+        self._m0 = 156  # 初始质量 (kg)
+
+        # 来自参数表: 纵向加速度限制 (G)
+        self._nyz_max = 50  # 最大过载 (G)
+
+        # 来自参数表: 引爆引信 (m)
+        self._Rc = 300 # 爆炸半径 (m)
+
+        # --- 以下为表格中未提供，但模拟必需的参数 ---
+        # 长度和直径使用AIM-120B的公开标准数据
+        self._Length = 3.66  # 弹体长度 (m)
+        self._Diameter = 0.178  # 弹体直径 (m)
+
+        # 推进剂质量和比冲在参数表中未提供，这里基于总重和发动机类型进行估算
+        # 假设推进剂质量约为70kg (这是导弹中常见的推进剂质量分数)
+        propellant_mass = 75
+        self._dm = propellant_mass / self._t_thrust  # 质量秒耗率 (kg/s)
+        self._Isp = 250  # 平均比冲 (s)，现代固体火箭的合理估算值
+
+        # 阻力系数和比例导引常数是与气动外形和制导律相关的复杂参数，使用典型值
+        self._cD = 0.5  # 气动阻力系数
+        self._K = 4  # 比例导引常数
+
+        # 最小速度，当导弹速度低于此值时认为其失去机动能力
+        self._v_min = 200  # 最小速度 (m/s)
 
     @property
     def is_alive(self):

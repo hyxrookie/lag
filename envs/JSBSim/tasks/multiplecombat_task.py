@@ -6,6 +6,7 @@ from typing import Tuple
 import torch
 
 from ..reward_functions.ApproachAndOrientReward import ApproachAndOrientReward
+from ..reward_functions.LLRTacticalReward import LLRTacticalReward
 from ..reward_functions.dodge_highest_tactical_threat_reward import EvasionReward
 from ..reward_functions.new_missile_dodge_reward import NewMissileDodgeContinuousReward
 from ..reward_functions.tactical_advantage_reward import TacticalAdvantageReward
@@ -139,7 +140,7 @@ class MultipleCombatTask(SingleCombatTask):
 
 
 class HierarchicalMultipleCombatTask(MultipleCombatTask):
-    
+
     def __init__(self, config: str):
         super().__init__(config)
         self.lowlevel_policy = BaselineActor()
@@ -192,10 +193,11 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         self.max_attack_distance = getattr(self.config, 'max_attack_distance', np.inf)
         self.min_attack_interval = getattr(self.config, 'min_attack_interval', 125)
         self.reward_functions = [
-            TacticalAdvantageReward(self.config),
+            # TacticalAdvantageReward(self.config),
             ApproachAndOrientReward(self.config),
-            EvasionReward(self.config),
+            # EvasionReward(self.config),
             NewMissileDodgeContinuousReward(self.config),
+            LLRTacticalReward(self.config),
             # MissileDodgeReward(self.config),
             EventDrivenReward(self.config),
             AltitudeReward(self.config)
@@ -203,12 +205,12 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         self.team_functions = [
             TeamReward(self.config)
         ]
-    
+
     def load_observation_space(self):
         self.obs_length = 9 + self.num_agents  * 6
         self.observation_space = spaces.Box(low=-10, high=10., shape=(self.obs_length,))
         self.share_observation_space = spaces.Box(low=-10, high=10., shape=(self.num_agents * self.obs_length,))
-    
+
     def load_action_space(self):
         self.action_space = spaces.MultiDiscrete([3, 5, 3, 2])
 

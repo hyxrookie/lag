@@ -60,7 +60,7 @@ class MultipleCombatEnv(BaseEnv):
         red_base_lat_deg = 60.0
         inner_radius_km = 5.0
         min_base_separation_km = 20.0
-        max_base_separation_km = 100.0
+        max_base_separation_km = 120.0
 
         # 红队经度换算（在红队纬度处）
         km_per_deg_lon_red = KM_PER_DEG_LON_AT_EQ * math.cos(math.radians(red_base_lat_deg))
