@@ -82,7 +82,7 @@ class LLRTacticalReward(BaseRewardFunction):
             self.previous_metrics[agent_id] = {'agent_states': {}, 'enemy_states': {}}
 
         agent_history = self.previous_metrics[agent_id].get('agent_states', {})
-        current_amraam_num = agent.num_missiles
+        current_amraam_num = task._remaining_missiles[agent_id]
         prev_amraam_num = agent_history.get('amraam_num', current_amraam_num)
         just_launched = current_amraam_num < prev_amraam_num
         ego_feature = np.hstack([agent.get_position(), agent.get_velocity()])
