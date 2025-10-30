@@ -4,7 +4,9 @@ from typing import Tuple
 import torch
 
 from envs.JSBSim.reward_functions.zk.AdvancedEnergyAdvantageReward import AdvancedEnergyAdvantageReward
+from envs.JSBSim.reward_functions.zk.LLRTacticalReward import LLRTacticalReward
 from envs.JSBSim.reward_functions.zk.MissileEvasionReward import MissileEvasionReward
+from envs.JSBSim.reward_functions.zk.NewLLRTacticalReward import NewLLRTacticalReward
 from envs.JSBSim.reward_functions.zk.PatrolStateReward import PatrolStateReward
 from envs.JSBSim.reward_functions.zk.RadarWarningReward import RadarWarningReward
 from envs.JSBSim.reward_functions.zk.SituationalAwarenessReward import SituationalAwarenessReward
@@ -189,12 +191,13 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
         self.reward_functions = [
             # ZKPostureReward(self.config),
             # ZKMissilePostureReward(self.config),
-            TwoPhasePatrolReward(self.config),
+            # TwoPhasePatrolReward(self.config),
             RadarWarningReward(self.config),
             MissileEvasionReward(self.config),
-            SituationalAwarenessReward(self.config),
+            # SituationalAwarenessReward(self.config),
+            NewLLRTacticalReward(self.config),
             TacticalDetectionReward(self.config),
-            AdvancedEnergyAdvantageReward(self.config),
+            # AdvancedEnergyAdvantageReward(self.config),
             ZKAltitudeReward(self.config),
             ZKEventDrivenReward(self.config)
         ]
@@ -228,7 +231,7 @@ class ZKHierarchicalMultipleCombatShootTask(ZKHierarchicalMultipleCombatTask):
         norm_obs[8] = agent.get("velocities/ve-fps") / 1116.44 # 8. ego vc   (unit: mh)(unit: 5G)
         # (2) relative inof w.r.t partner+enemies state
         offset = 8
-        for sim in env.agents[agent_id].partners + env.agents[agent_id].share_detected_enemies:
+        for sim in env.agents[agent_id].partners + env.agents[agent_id].enemies:
             sim_geodetic = sim.get_geodetic()
             # cur_ned = LLA2NEU(*state[:3], env.center_lon, env.center_lat, env.center_alt)
             # feature = np.array([*cur_ned, *(state[6:9])])

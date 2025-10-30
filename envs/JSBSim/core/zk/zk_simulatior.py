@@ -205,7 +205,7 @@ class Aircraft:
 
         # 5. 更新是否超出边界
         if not (self.lat_limit[0] < self.position_and_attitude.lat_geod_deg < self.lat_limit[1] and
-                self.lon_limit[0] < self.position_and_attitude.long_gc_deg < self.lon_limit[1]):
+                self.lon_limit[0] < self.position_and_attitude.long_gc_deg < self.lon_limit[1] and self.position_and_attitude.h_sl_ft * FT_TO_M < 11000):
             self.out_side_time += 1
         else:
             self.out_side_time = 0

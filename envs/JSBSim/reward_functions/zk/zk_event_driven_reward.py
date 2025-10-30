@@ -59,6 +59,6 @@ class ZKEventDrivenReward(BaseRewardFunction):
             if missile.is_success and missile.uid not in self.rewarded_missiles:
                 reward += 300
                 self.rewarded_missiles.add(missile.uid)
-
+        # print("agentid:{}事件奖励：{}".format(agent_id, reward))
         # 注意：原代码中的 _process 方法依然保留，用于后续处理
         return self._process(reward, agent_id)

@@ -1,6 +1,11 @@
+import atexit
+import os
+from datetime import datetime
+
 import numpy as np
 import torch
 from envs.JSBSim.envs import SingleCombatEnv, SingleControlEnv, MultipleCombatEnv
+from envs.JSBSim.envs.zk import ZKMultipleCombatEnv
 from envs.JSBSim.utils.utils import parse_config
 from envs.env_wrappers import SubprocVecEnv, DummyVecEnv
 from envs.JSBSim.core.catalog import Catalog as c
@@ -9,6 +14,10 @@ import time
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
+@atexit.register
+def exit():
+    os.system("ps -ef|grep ZK.x86_64|grep -v grep |awk '{print $2}'|xargs kill -9")
+    os.system("taskkill /F /IM ZK.exe")
 
 class Args:
     def __init__(self) -> None:
@@ -26,17 +35,22 @@ class Args:
 def _t2n(x):
     return x.detach().cpu().numpy()
 
-scenario_name = "4v4/ShootMissile/HierarchySelfplay"
+scenario_name = "zk/4v4/HierarchySelfplay"
 config = parse_config(scenario_name)
 num_agents = len(config.aircraft_configs)
 render = True
-ego_policy_index = 0
-enm_policy_index = 0
+ego_policy_index = 300
+enm_policy_index = 180
 episode_rewards = 0
-ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
-enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
-experiment_name = ego_run_dir.split('/')[-4]
-env = MultipleCombatEnv(scenario_name)
+# ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
+# enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
+
+ego_run_dir = "C:/Users/hyx/PycharmProjects/lag4zk/scripts/results/ZKMultipleCombat/zk/4v4/HierarchySelfplay/mappo/v1/run195"
+enm_run_dir = "C:/Users/hyx/PycharmProjects/lag4zk/scripts/results/ZKMultipleCombat/zk/4v4/HierarchySelfplay/mappo/v1/run195"
+current_time = datetime.now().strftime("%Y-%m-%d_%H-%M")
+experiment_name = ego_run_dir.split('/')[-4] + current_time
+
+env = ZKMultipleCombatEnv(scenario_name, 2)
 env.seed(0)
 args = Args()
 
@@ -47,15 +61,14 @@ enm_policy.eval()
 ego_policy.load_state_dict(torch.load(ego_run_dir + f"/actor_{ego_policy_index}.pt"))
 enm_policy.load_state_dict(torch.load(enm_run_dir + f"/actor_{enm_policy_index}.pt"))
 
-
 print("Start render")
 obs, _ = env.reset()
 if render:
     env.render(mode='txt', filepath=f'{experiment_name}.txt.acmi')
 ego_rnn_states = np.zeros((1, 1, 128), dtype=np.float32)
 masks = np.ones((num_agents // 2, 1))
-enm_obs =  obs[num_agents // 2:, :]
-ego_obs =  obs[:num_agents // 2, :]
+enm_obs = obs[num_agents // 2:, :]
+ego_obs = obs[:num_agents // 2, :]
 enm_rnn_states = np.zeros_like(ego_rnn_states, dtype=np.float32)
 while True:
     start = time.time()
@@ -80,9 +93,10 @@ while True:
     if dones.all():
         print(infos)
         break
-    bloods = [env.agents[agent_id].bloods for agent_id in env.agents.keys()]
-    print(f"step:{env.current_step}, bloods:{bloods}")
-    enm_obs =  obs[num_agents // 2:, ...]
-    ego_obs =  obs[:num_agents // 2, ...]
+    # bloods = [env.agents[agent_id].bloods for agent_id in env.agents.keys()]
+    print(f"step:{env.current_step}, bloods:{0}")
+    enm_obs = obs[num_agents // 2:, ...]
+    ego_obs = obs[:num_agents // 2, ...]
 
+env.reset()
 print(episode_rewards)

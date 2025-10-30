@@ -49,9 +49,11 @@ class ZKMultipleCombatEnv(ZKBaseEnv):
         self._zk_missiles.clear()
         # self.reset_simulators()
 
-        red_x, red_y, red_psi, red_v, blue_x, blue_y, blue_psi, blue_v, h = self.get_common_init_pos()
-        reset_attribute = self.reset_variable(red_x, red_y, red_psi, red_v, blue_x,
-                                         blue_y, blue_psi, blue_v, h, self.red_num, self.blue_num)
+        # red_x, red_y, red_psi, red_v, blue_x, blue_y, blue_psi, blue_v, h = self.get_common_init_pos()
+        # reset_attribute = self.reset_variable(red_x, red_y, red_psi, red_v, blue_x,
+        #                                  blue_y, blue_psi, blue_v, h, self.red_num, self.blue_num)
+        reset_attribute = self.generate_initial_conditions_dict(4,4)
+
         init_info = {'red': reset_attribute['red'],
                      'blue': reset_attribute['blue']}
         if self.INITIAL is False:

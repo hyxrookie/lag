@@ -44,7 +44,7 @@ class TacticalDetectionReward(BaseRewardFunction):
 
         # --- 2. 获取当前探测到的所有敌人ID ---
         agent = env.agents[agent_id]
-        current_detected_ids = {enemy.uid for enemy in agent.single_detected_enemies if enemy.is_alive}
+        current_detected_ids = {enemy.uid for enemy in agent.enemies if enemy.is_alive}
 
         # --- 3. 遍历当前所有可见的敌人 ---
         for enemy_id in current_detected_ids:

@@ -48,6 +48,17 @@ class SituationalAwarenessReward(BaseRewardFunction):
         self.reward_energy_advantage = getattr(self.config, 'reward_energy_advantage', 0.5)
         self.penalty_energy_disadvantage = getattr(self.config, 'penalty_energy_disadvantage', -0.5)
 
+
+        # <--- 新增部分开始: 高度限制参数 --->
+        self.MAX_ALTITUDE_METER = getattr(self.config, 'MAX_ALTITUDE_METER', 11000.0) # 11km硬顶
+        # 只要高于11km，就给予这个巨大的固定惩罚
+        self.penalty_hard_ceiling = getattr(self.config, 'penalty_hard_ceiling', -200.0)
+
+        # (可选) 保留软区间引导，鼓励无人机保持在最佳高度
+        self.OPTIMAL_ALT_MAX_METER = getattr(self.config, 'OPTIMAL_ALT_MAX_METER', 10500.0) # 10.5km
+        self.OPTIMAL_ALT_MIN_METER = getattr(self.config, 'OPTIMAL_ALT_MIN_METER', 5000.0)  # 5km
+        self.w_altitude_penalty = getattr(self.config, 'w_altitude_penalty', -0.1)
+
         # 历史记录现在只需要存上一刻的距离R
         self.previous_metrics = {}
 
@@ -87,6 +98,7 @@ class SituationalAwarenessReward(BaseRewardFunction):
 
             # --- a. 动态选择BVR/WVR模式 ---
             if R > 20000:
+                # print("agentid:{}超视距模式:{}".format(agent_id, R))
                 # --- BVR 模式 ---
                 AO, _, _ = get_AO_TA_R(ego_feature, enm_feature)
                 ao_abs_deg = abs(math.degrees(AO))
@@ -104,6 +116,7 @@ class SituationalAwarenessReward(BaseRewardFunction):
 
             else:
                 # --- WVR 模式 ---
+                # print("agentid:{}近距模式:{}".format(agent_id, R))
                 az_deg, el_deg, _ = get_az_el_R(ego_feature, enm_feature)
                 in_hud = (abs(az_deg) < self.hud_scan_az_deg) and (abs(el_deg) < self.hud_scan_el_deg)
                 in_vsl = (abs(az_deg) < self.vsl_scan_az_deg) and (abs(el_deg) < self.vsl_scan_el_deg)
@@ -142,6 +155,28 @@ class SituationalAwarenessReward(BaseRewardFunction):
 
         # --- f. 计算最终加权平均奖励 ---
         final_reward = total_weighted_reward / total_threat_weight if total_threat_weight > 0 else 0
+        # print("agentid:{}态势感知奖励:{}".format(agent_id, final_reward))
+
+        # <--- 新增部分开始: 计算高度惩罚 --->
+        R_altitude = 0.0
+
+        # 1. 首先检查是否触犯了硬性规定
+        if ego_alt > self.MAX_ALTITUDE_METER:
+            # 只要高于11km，就给予一个巨大的、固定的惩罚
+            R_altitude = self.penalty_hard_ceiling
+        # 2. 如果没有触犯硬性规定，再检查是否在最佳区间内 (可选的软引导)
+        elif ego_alt > self.OPTIMAL_ALT_MAX_METER:
+            # 在"缓冲区"内，给予一个较小的惩罚
+            R_altitude = self.w_altitude_penalty * (ego_alt - self.OPTIMAL_ALT_MAX_METER) / 500.0
+        elif ego_alt < self.OPTIMAL_ALT_MIN_METER:
+            R_altitude = self.w_altitude_penalty * (self.OPTIMAL_ALT_MIN_METER - ego_alt) / 500.0
+
+        # 将高度惩罚加入最终奖励
+        final_reward_with_penalty = final_reward + R_altitude
+
+        # 将高度惩罚加入最终奖励
+        final_reward_with_penalty = final_reward + R_altitude
+        # <--- 新增部分结束 --->
 
         # --- g. 清理历史记录 ---
         current_enemy_ids = {enm.uid for enm in alive_enemies}

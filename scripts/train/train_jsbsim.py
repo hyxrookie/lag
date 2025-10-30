@@ -240,6 +240,8 @@ def multArgs():
         '--eval-interval', '1',
         '--eval-episodes', '1',
         '--user-name', 'jyh',
+        '--model-dir',
+        "C:/Users/hyx/PycharmProjects/lag4zk/scripts/results/ZKMultipleCombat/zk/4v4/HierarchySelfplay/mappo/v1/run190"
     ]
     return cmd_args
 
@@ -267,7 +269,7 @@ def singleArgs():
         '--experiment-name', exp,
         '--seed', str(seed),
         '--n-training-threads', '1',
-        '--n-rollout-threads', '16',  #
+        '--n-rollout-threads', '4',  #
         '--cuda',
         '--log-interval', '1',
         '--save-interval', '1',
@@ -302,6 +304,6 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
-    # main(multArgs())
+    main(multArgs())
     # main(singleArgs())
-    main(sys.argv[1:])
+    # main(sys.argv[1:])

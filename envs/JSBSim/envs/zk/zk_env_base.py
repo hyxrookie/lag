@@ -2,6 +2,7 @@ import collections
 import gzip
 import json
 import logging
+import math
 import os
 import random
 import socket
@@ -369,7 +370,7 @@ class ZKBaseEnv(BaseEnv):
 
     @staticmethod
     def get_common_init_pos():
-        max_range = 0.3
+        max_range = 0.22
         red_y = 0.5 * np.random.random() - 0.25
         blue_y = 0.5 * np.random.random() - 0.25
         initial_pos_set = {
@@ -388,7 +389,7 @@ class ZKBaseEnv(BaseEnv):
             r2 * initial_pos[1], \
                 initial_pos[2], \
                 initial_pos[3]
-        red_v, blue_v = 600 * r3, 600 * r4
+        red_v, blue_v = 1200 * r3, 1200 * r4
         h = 32000 * r5
         return red_x, red_y, red_psi, red_v, blue_x, blue_y, blue_psi, blue_v, h
 
@@ -434,6 +435,126 @@ class ZKBaseEnv(BaseEnv):
                     "ic/phi-deg": 0, "ic/theta-deg": 0,
                     "ic/roc-fpm": 0, "ic/psi-true-deg": blue_psi
                 }
+        return reset_attribute
+
+
+
+    @staticmethod
+    # 您可以将这个函数放在您的类中，并根据需要添加 self 或 @staticmethod
+    # class AircraftInitialPositionGenerator:
+    #     def generate_initial_conditions_dict(self, red_num: int, blue_num: int, min_sep_km: float = 0.5):
+    def generate_initial_conditions_dict(red_num: int, blue_num: int, min_sep_km: float = 0.5):
+        """
+        最终版本：
+        - 完全采用先进的基地-集群生成逻辑来确定每架飞机的位置。
+        - 完全采用先进逻辑中的方式为每架飞机独立随机化高度、速度和航向。
+        - 唯一的参数修改是将基地间距设为 10-60 公里。
+        - 最终输出为您指定的字典格式。
+        """
+        # --- 1. 常量和单位换算 (源自第二段代码) ---
+        KM_PER_DEG_LAT = 111.132
+        KM_PER_DEG_LON_AT_EQ = 111.320
+        FT_PER_METER = 3.28084
+
+        # --- 2. 基地与范围设置 (源自第二段代码) ---
+        red_base_lon_deg = 0.0
+        red_base_lat_deg = 0.0
+        inner_radius_km = 5.0  # 飞机在基地周围 5km 半径内生成
+
+        # --- 这里是您要求的核心修改点 ---
+        min_base_separation_km = 20.0
+        max_base_separation_km = 50.0
+
+        # --- 3. 蓝队基地位置计算 (源自第二段代码) ---
+        km_per_deg_lon_red = KM_PER_DEG_LON_AT_EQ * math.cos(math.radians(red_base_lat_deg))
+
+        angle_rad = random.uniform(0, 2 * math.pi)
+        distance_km = random.uniform(min_base_separation_km, max_base_separation_km)
+        delta_lat_deg = (distance_km * math.cos(angle_rad)) / KM_PER_DEG_LAT
+        delta_lon_deg = (distance_km * math.sin(angle_rad)) / km_per_deg_lon_red
+        blue_base_lat_deg = red_base_lat_deg + delta_lat_deg
+        blue_base_lon_deg = red_base_lon_deg + delta_lon_deg
+
+        km_per_deg_lon_blue = KM_PER_DEG_LON_AT_EQ * math.cos(math.radians(blue_base_lat_deg))
+
+        # --- 4. 飞机在基地周围的放置算法 (源自第二段代码) ---
+        def sample_offset_deg(R_km, km_per_deg_lon):
+            u, r = random.random(), R_km * math.sqrt(random.random())
+            theta = random.uniform(0.0, 2.0 * math.pi)
+            return (r * math.cos(theta)) / KM_PER_DEG_LAT, (r * math.sin(theta)) / km_per_deg_lon
+
+        def far_enough(new_lat, new_lon, placed, km_per_deg_lon, min_sep):
+            for lat, lon in placed:
+                dlat_km, dlon_km = (new_lat - lat) * KM_PER_DEG_LAT, (new_lon - lon) * km_per_deg_lon
+                if (dlat_km ** 2 + dlon_km ** 2) < (min_sep ** 2): return False
+            return True
+
+        def place_team(num_aircraft, base_lat, base_lon, km_per_deg_lon, R_km, min_sep):
+            placed = []
+            for _ in range(num_aircraft):
+                attempts, max_attempts, cur_min_sep = 0, 2000, min_sep
+                while True:
+                    attempts += 1
+                    off_lat, off_lon = sample_offset_deg(R_km, km_per_deg_lon)
+                    cand_lat, cand_lon = base_lat + off_lat, base_lon + off_lon
+                    if far_enough(cand_lat, cand_lon, placed, km_per_deg_lon, cur_min_sep):
+                        placed.append((cand_lat, cand_lon));
+                        break
+                    if attempts >= max_attempts: cur_min_sep *= 0.9; attempts = 0
+            return placed
+
+        red_positions = place_team(red_num, red_base_lat_deg, red_base_lon_deg, km_per_deg_lon_red, inner_radius_km,
+                                   min_sep_km)
+        blue_positions = place_team(blue_num, blue_base_lat_deg, blue_base_lon_deg, km_per_deg_lon_blue,
+                                    inner_radius_km, min_sep_km)
+
+        # --- 5. 构建最终的字典 (输出格式源自第一段代码) ---
+        reset_attribute = {'red': {}, 'blue': {}}
+
+        # 填充红队数据
+        for i in range(red_num):
+            # 参数生成完全采用第二段代码的逻辑
+            altitude_m = random.randint(5000, 10000)
+            heading_deg = random.randint(0, 359)
+            speed_mps = random.randint(175, 350)  # 红队速度范围
+            lat, lon = red_positions[i]
+
+            aircraft_id = f'red_{i}'
+            reset_attribute['red'][aircraft_id] = {
+                "ic/h-sl-ft": altitude_m * FT_PER_METER,
+                "ic/terrain-elevation-ft": 1e-08,
+                "ic/long-gc-deg": lon,
+                "ic/lat-geod-deg": lat,
+                "ic/u-fps": speed_mps * FT_PER_METER,
+                "ic/psi-true-deg": heading_deg,
+                # 补全其他参数以确保初始状态稳定
+                "ic/v-fps": 0, "ic/w-fps": 0, "ic/p-rad_sec": 0,
+                "ic/q-rad_sec": 0, "ic/r-rad_sec": 0, "ic/phi-deg": 0,
+                "ic/theta-deg": 0, "ic/roc-fpm": 0,
+            }
+
+        # 填充蓝队数据
+        for i in range(blue_num):
+            # 参数生成完全采用第二段代码的逻辑
+            altitude_m = random.randint(5000, 10000)
+            heading_deg = random.randint(0, 359)
+            speed_mps = random.randint(175, 350)  # 蓝队速度范围
+            lat, lon = blue_positions[i]
+
+            aircraft_id = f'blue_{i}'
+            reset_attribute['blue'][aircraft_id] = {
+                "ic/h-sl-ft": altitude_m * FT_PER_METER,
+                "ic/terrain-elevation-ft": 1e-08,
+                "ic/long-gc-deg": lon,
+                "ic/lat-geod-deg": lat,
+                "ic/u-fps": speed_mps * FT_PER_METER,
+                "ic/psi-true-deg": heading_deg,
+                # 补全其他参数
+                "ic/v-fps": 0, "ic/w-fps": 0, "ic/p-rad_sec": 0,
+                "ic/q-rad_sec": 0, "ic/r-rad_sec": 0, "ic/phi-deg": 0,
+                "ic/theta-deg": 0, "ic/roc-fpm": 0,
+            }
+
         return reset_attribute
 
     def render(self, mode="txt", filepath='./JSBSimRecording.txt.acmi', tacview=None):
@@ -501,9 +622,10 @@ class RuleBasedController:
     代码简洁且健壮。
     """
 
-    def __init__(self, sraam_max_range_m=18000.0, crm_preferred_min_range_m=20000.0):
+    def __init__(self, sraam_max_range_m=18000.0, crm_preferred_min_range_m=20000.0, max_missiles_per_target=2):
         self.SRAAM_MAX_RANGE_M = sraam_max_range_m
         self.CRM_PREFERRED_MIN_RANGE_M = crm_preferred_min_range_m
+        self.MAX_MISSILES_PER_TARGET = max_missiles_per_target
 
     # --- 辅助方法 (无需改动) ---
 
@@ -532,70 +654,109 @@ class RuleBasedController:
 
         return priority_target, target_distance
 
+    def _get_sorted_targets(self, agent: Aircraft) -> List[Aircraft]:
+        """
+        获取所有探测到的、存活的敌机，并按距离从近到远排序。
+        """
+        target_candidates = []
+        agent_feature = np.hstack([agent.get_position(), agent.get_velocity()])
+
+        for enm in agent.single_detected_enemies:
+            if enm.is_alive:
+                enm_feature = np.hstack([enm.get_position(), enm.get_velocity()])
+                _, _, r = get_AO_TA_R(agent_feature, enm_feature)
+                target_candidates.append((r, enm))
+
+        target_candidates.sort(key=lambda x: x[0])
+        return [enm for r, enm in target_candidates]
+
+    def _get_missiles_targeting_enemies(self, env: ZKBaseEnv, agent_team: str) -> Dict[int, int]:
+        """
+        统计每个敌机当前被多少枚我方在途导弹攻击。
+        """
+        targeting_info = {}
+        for missile in env.missiles.values():
+            if missile.is_alive and missile.parent and agent_team in missile.parent.key and missile.target:
+                target_id = missile.target.uid
+                targeting_info[target_id] = targeting_info.get(target_id, 0) + 1
+        return targeting_info
+
     # --- 主决策方法 (无状态逻辑) ---
 
     def decide(self, env: ZKBaseEnv, agent: Aircraft) -> Dict:
         """为给定的Agent状态生成一套无状态的、反应式的规则化指令。"""
-        # 1. 初始化指令, 目标控制先默认让系统自动锁定
+        # --- 初始化 ---
         commands = {
             'fcs/weapon-launch': 0, 'switch-missile': 0,
             'switch-acmType': 0, 'change-target': 9
         }
-        # 2. 态势感知
-        priority_target, target_distance = self._find_priority_target(agent)
-        # 3. 防御优先检查
-        if agent.get('MissileAlert') == 1 or priority_target is None:
+
+        # --- 1. 全局态势感知 ---
+        sorted_targets = self._get_sorted_targets(agent)
+        if agent.get('MissileAlert') == 1 or not sorted_targets:
             return commands
 
+        agent_team = 'red' if 'red' in agent.key else 'blue'
+        missiles_on_targets = self._get_missiles_targeting_enemies(env, agent_team)
+
+        # --- 2. 确定本回合的“有效战术目标” ---
+        effective_target = None
+        for target in sorted_targets:
+            num_missiles_on_this_target = missiles_on_targets.get(target.uid, 0)
+            if num_missiles_on_this_target < self.MAX_MISSILES_PER_TARGET:
+                effective_target = target
+                break
+
+        if effective_target is None:
+            return commands
+
+        # --- 3. 武器系统管理 (基于有效目标) ---
+        agent_pos = agent.get_position()
+        target_pos = effective_target.get_position()
+        target_distance = np.linalg.norm(agent_pos - target_pos)
         AimMode = agent.get("AimMode")
 
-        # 4. 武器系统管理
         if target_distance < self.SRAAM_MAX_RANGE_M and agent.get('SRAAMCurrentNum') > 0 and AimMode == 1:
             commands['switch-missile'] = 1
         elif target_distance > self.CRM_PREFERRED_MIN_RANGE_M and agent.get('AMRAAMCurrentNum') > 0 and AimMode == 0:
             commands['switch-missile'] = 1
 
         if AimMode == 0:
-            alt_diff = abs(agent.get('position/h-sl-ft') - priority_target.get('position/h-sl-ft'))
+            alt_diff = abs(agent.get('position/h-sl-ft') - effective_target.get('position/h-sl-ft'))
             if alt_diff > 5000 and agent.get("ACMaimMode") == 0:
                 commands['switch-acmType'] = 1
             elif alt_diff < 4500 and agent.get("ACMaimMode") == 1:
                 commands['switch-acmType'] = 1
 
-        # 如果切换武器指令生效， 就直接返回切换武器， 否则切换武器和后面的目标锁定， 武器发射可能会冲突
         if commands['switch-missile'] == 1 or commands['switch-acmType'] == 1:
             return commands
 
-        # 5. 发射决策 (核心区别点)
-        # 直接检查当前状态是否满足对 priority_target 的发射条件
-        is_lock_successful = False
+        # --- 4. 核心决策：锁定与发射 (围绕有效目标展开) ---
         locked_id = None
-        if AimMode == 0:  # 近程弹
-            is_lock_successful = (agent.get('SRAAMTargetLocked') != 9)
-            if is_lock_successful:
-                locked_id = self.get_priority_sraam_target(agent, agent.get('SRAAMTargetLocked'))
-        elif AimMode == 1:  # 中程弹
-            is_lock_successful = (agent.get('AMRAAMlockedTarget') != 9999)
-            if is_lock_successful:
-                locked_id = self.get_priority_amraam_target(agent, agent.get('AMRAAMlockedTarget'))
+        if AimMode == 0:
+            locked_id = self.get_priority_sraam_target(agent, agent.get('SRAAMTargetLocked'))
+        elif AimMode == 1:
+            locked_id = self.get_priority_amraam_target(agent, agent.get('AMRAAMlockedTarget'))
 
-        if not is_lock_successful:
-            change_target = self.generate_lock_command([priority_target.uid])
-            commands['change-target'] = change_target
-            return commands
-        if locked_id is not None:
+        if locked_id == effective_target.uid:
+            # 分支 A: 目标正确，执行“发射”流程
             locked_agent = env.agents[locked_id]
+            if not locked_agent:
+                return commands
+
             agent_feature = np.hstack([agent.get_position(), agent.get_velocity()])
             locked_agent_feature = np.hstack([locked_agent.get_position(), locked_agent.get_velocity()])
             _, _, r = get_AO_TA_R(agent_feature, locked_agent_feature)
-            # 其他条件检查 (包线, 武器就绪)
             envelope_min = agent.get('EnvelopeMin')
             envelope_max = agent.get('EnvelopeMax')
             is_in_envelope = envelope_min <= r <= envelope_max
-            # 发射决策
-            if is_lock_successful and is_in_envelope:
+
+            if is_in_envelope:
                 commands['fcs/weapon-launch'] = 1
-            return commands
+        else:
+            # 分支 B: 目标错误(或无目标)，执行“切换锁定”流程
+            change_target_cmd = self.generate_lock_command([effective_target.uid])
+            commands['change-target'] = change_target_cmd
 
         return commands
 
