@@ -32,7 +32,7 @@ class MultipleCombatTask(SingleCombatTask):
 
     @property
     def num_agents(self) -> int:
-        return 4
+        return len(self.config.aircraft_configs)
 
     def load_variables(self):
         self.state_var = [
@@ -118,12 +118,6 @@ class MultipleCombatTask(SingleCombatTask):
         norm_act[2] = action[2] * 2. / (self.action_space.nvec[2] - 1.) - 1.
         norm_act[3] = action[3] * 0.5 / (self.action_space.nvec[3] - 1.) + 0.4
         return norm_act
-
-    def get_reward(self, env, agent_id, info: dict = ...) -> Tuple[float, dict]:
-        if env.agents[agent_id].is_alive:
-            return super().get_reward(env, agent_id, info=info)
-        else:
-            return 0.0, info
 
 
 class HierarchicalMultipleCombatTask(MultipleCombatTask):
@@ -253,9 +247,16 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
     def step(self, env):
         SingleCombatTask.step(self, env)
         for agent_id, agent in env.agents.items():
-            # [RL-based missile launch with limited condition]
-            # Determine whether can launch missile at the nearest enemy aircraft
-            target_list = list(map(lambda x: x.get_position() - agent.get_position(), agent.enemies))
+            # [RL-based missile launch with limited condition] Determine whether can launch missile at the nearest
+            # enemy aircraft, the aircraft and enemy aircraft must alive
+            if not agent.is_alive:
+                continue
+            alive_enemies = list(filter(lambda x: x.is_alive, agent.enemies))
+
+            if not alive_enemies:
+                continue
+            target_list = [x.get_position() - agent.get_position() for x in alive_enemies]
+
             target_distance = list(map(np.linalg.norm, target_list))
             target_index = np.argmin(target_distance)
             target = target_list[target_index]
@@ -264,11 +265,14 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             attack_angle = np.rad2deg(np.arccos(np.clip(np.sum(target * heading) / (distance * np.linalg.norm(heading) + 1e-8), -1, 1)))
             shoot_interval = env.current_step - self._last_shoot_time[agent_id]
 
+            agent_v = np.linalg.norm(agent.get_velocity())
+
             shoot_flag = agent.is_alive and self._shoot_action[agent_id] and self._remaining_missiles[agent_id] > 0 \
-                and attack_angle <= self.max_attack_angle and distance <= self.max_attack_distance and shoot_interval >= self.min_attack_interval
+                and attack_angle <= self.max_attack_angle and distance <= self.max_attack_distance and shoot_interval >= self.min_attack_interval\
+                and agent_v > 150
             if shoot_flag:
                 new_missile_uid = agent_id + str(self._remaining_missiles[agent_id])
                 env.add_temp_simulator(
-                    MissileSimulator.create(parent=agent, target=agent.enemies[target_index], uid=new_missile_uid))
+                    MissileSimulator.create(parent=agent, target=alive_enemies[target_index], uid=new_missile_uid))
                 self._remaining_missiles[agent_id] -= 1
                 self._last_shoot_time[agent_id] = env.current_step

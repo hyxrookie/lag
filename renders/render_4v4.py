@@ -1,11 +1,13 @@
 import numpy as np
 import torch
 from envs.JSBSim.envs import SingleCombatEnv, SingleControlEnv, MultipleCombatEnv
+from envs.JSBSim.utils.utils import parse_config
 from envs.env_wrappers import SubprocVecEnv, DummyVecEnv
 from envs.JSBSim.core.catalog import Catalog as c
 from algorithms.ppo.ppo_actor import PPOActor
 import time
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 class Args:
@@ -24,16 +26,17 @@ class Args:
 def _t2n(x):
     return x.detach().cpu().numpy()
 
-num_agents = 4
+scenario_name = "4v4/ShootMissile/HierarchySelfplay"
+config = parse_config(scenario_name)
+num_agents = len(config.aircraft_configs)
 render = True
-ego_policy_index = 1
-enm_policy_index = 9
+ego_policy_index = 0
+enm_policy_index = 0
 episode_rewards = 0
-ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/HierarchySelfplay/mappo/v1/wandb/run-20250416_185206-2uozqjr6/files"
-enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/HierarchySelfplay/mappo/v1/wandb/run-20250416_185206-2uozqjr6/files"
+ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
+enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
 experiment_name = ego_run_dir.split('/')[-4]
-
-env = MultipleCombatEnv("2v2/ShootMissile/HierarchySelfplay")
+env = MultipleCombatEnv(scenario_name)
 env.seed(0)
 args = Args()
 
