@@ -120,6 +120,7 @@ class VecEnv(ABC):
         return self.step_wait()
 
 
+
 class DummyVecEnv(VecEnv):
     """
     VecEnv that does runs multiple environments sequentially, that is,
@@ -219,6 +220,14 @@ def worker(remote: Connection, parent_remote: Connection, env_fn_wrappers):
                 remote.send(CloudpickleWrapper((envs[0].observation_space, envs[0].action_space)))
             elif cmd == 'get_num_agents':
                 remote.send(CloudpickleWrapper((getattr(envs[0], "num_agents", 1))))
+            elif cmd == 'set_curriculum_level':
+                # 调用环境里的方法
+                # data 就是从主进程传过来的 current_level (0.0 ~ 1.0)
+                for env in envs:
+                    if hasattr(env, 'set_curriculum_level'):
+                        env.set_curriculum_level(data)
+                # 注意：这里不需要 remote.send()，除非你在主进程的 set_curriculum_level 里写了 recv()
+                # 如果主进程是“发后即忘 (fire-and-forget)”，这里就不要 send，否则会阻塞下一次 step
             else:
                 raise NotImplementedError
     except KeyboardInterrupt:
@@ -319,6 +328,15 @@ class SubprocVecEnv(VecEnv):
 
         return [v__ for v_ in v for v__ in v_]
 
+    def set_curriculum_level(self, level):
+        """
+        向所有子进程发送课程难度更新指令。
+        这是一个 Fire-and-forget 操作，不需要等待子进程返回。
+        """
+        self._assert_not_closed()
+        for remote in self.remotes:
+            remote.send(('set_curriculum_level', level))
+
 
 class ShareVecEnv(VecEnv):
     """
@@ -408,6 +426,14 @@ def shareworker(remote: Connection, parent_remote: Connection, env_fn_wrappers):
                 remote.send(CloudpickleWrapper((envs[0].observation_space, envs[0].share_observation_space, envs[0].action_space)))
             elif cmd == 'get_num_agents':
                 remote.send(CloudpickleWrapper((getattr(envs[0], "num_agents", 1))))
+            elif cmd == 'set_curriculum_level':
+                # 调用环境里的方法
+                # data 就是从主进程传过来的 current_level (0.0 ~ 1.0)
+                for env in envs:
+                    if hasattr(env, 'set_curriculum_level'):
+                        env.set_curriculum_level(data)
+                # 注意：这里不需要 remote.send()，除非你在主进程的 set_curriculum_level 里写了 recv()
+                # 如果主进程是“发后即忘 (fire-and-forget)”，这里就不要 send，否则会阻塞下一次 step
             else:
                 raise NotImplementedError
     except KeyboardInterrupt:

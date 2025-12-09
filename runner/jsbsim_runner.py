@@ -10,6 +10,27 @@ def _t2n(x):
     return x.detach().cpu().numpy()
 
 
+class CurriculumScheduler:
+    def __init__(self, total_steps, start_level=0.0, end_level=1.0):
+        self.total_steps = total_steps
+        # --- Sigmoid 参数 ---
+        # 决定曲线的中点 (Midpoint)：在训练到 40% 时，难度达到 0.5
+        self.midpoint = total_steps * 0.4
+        # 决定曲线的陡峭程度 (Slope)：值越大，难度提升越快
+        # 20.0 是一个经验值，能保证曲线平滑且两端饱和
+        self.slope = 20.0 / total_steps
+
+    def get_level(self, current_step):
+        # 核心公式: 1 / (1 + e^(-slope * (x - midpoint)))
+        x = current_step
+        exponent = -self.slope * (x - self.midpoint)
+        # 防止 exp 溢出
+        exponent = np.clip(exponent, -20, 20)
+        sigmoid = 1.0 / (1.0 + np.exp(exponent))
+
+        # 确保值在 0.0 到 1.0 之间
+        return float(np.clip(sigmoid, 0.0, 1.0))
+
 class JSBSimRunner(Runner):
 
     def load(self):
@@ -35,12 +56,23 @@ class JSBSimRunner(Runner):
 
     def run(self):
         self.warmup()
-
         start = time.time()
         self.total_num_steps = 0
         episodes = self.num_env_steps // self.buffer_size // self.n_rollout_threads
 
+        # [新增] 1. 初始化课程调度器
+        curriculum_scheduler = CurriculumScheduler(self.num_env_steps)
+
         for episode in range(episodes):
+
+            # [新增] 2. 计算当前难度等级 (0.0 ~ 1.0)
+            # 使用 self.total_num_steps 作为当前进度
+            current_level = curriculum_scheduler.get_level(self.total_num_steps)
+
+            # [新增] 3. 将难度同步给所有并行环境
+            # 假设 self.envs 是一个 VecEnv 或者类似的并行环境包装器
+            # 我们需要调用环境的一个方法来更新 self.curriculum_level
+            self.update_env_curriculum(current_level)
 
             heading_turns_list = []
 
@@ -49,6 +81,8 @@ class JSBSimRunner(Runner):
                 values, actions, action_log_probs, rnn_states_actor, rnn_states_critic = self.collect(step)
 
                 # Obser reward and next obs
+                # [注意] 当 step 触发 done 并自动 reset 时，
+                # 环境里的 reset_simulators 就会使用刚才更新过的 current_level
                 obs, rewards, dones, infos = self.envs.step(actions)
 
                 # Extra recorded information
@@ -71,17 +105,23 @@ class JSBSimRunner(Runner):
             # log information
             if episode % self.log_interval == 0:
                 end = time.time()
-                logging.info("\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
-                             .format(self.all_args.scenario_name,
-                                     self.algorithm_name,
-                                     self.experiment_name,
-                                     episode,
-                                     episodes,
-                                     self.total_num_steps,
-                                     self.num_env_steps,
-                                     int(self.total_num_steps / (end - start))))
+                logging.info(
+                    "\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
+                    .format(self.all_args.scenario_name,
+                            self.algorithm_name,
+                            self.experiment_name,
+                            episode,
+                            episodes,
+                            self.total_num_steps,
+                            self.num_env_steps,
+                            int(self.total_num_steps / (end - start))))
 
                 train_infos["average_episode_rewards"] = self.buffer.rewards.sum() / (self.buffer.masks == False).sum()
+
+                # [新增] 记录当前课程难度，方便在 Tensorboard 查看
+                train_infos["curriculum_level"] = current_level
+                logging.info(f"Current Curriculum Level: {current_level:.4f}")  # 打印到日志
+
                 logging.info("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
 
                 if len(heading_turns_list):
@@ -91,12 +131,27 @@ class JSBSimRunner(Runner):
 
             # eval
             if episode % self.eval_interval == 0 and episode != 0 and self.use_eval:
-                    self.eval(self.total_num_steps)
+                self.eval(self.total_num_steps)
 
             # save model
             if (episode % self.save_interval == 0) or (episode == episodes - 1):
                 self.save(episode)
 
+    def update_env_curriculum(self, level):
+        """
+        兼容 DummyVecEnv 和 SubprocVecEnv 的参数更新函数
+        """
+        # 情况 A: 单线程调试模式 (DummyVecEnv / ShareDummyVecEnv)
+        # 这种模式下，self.envs.envs 就是环境实例的列表，直接循环调用即可
+        if "Dummy" in self.envs.__class__.__name__:
+            for env in self.envs.envs:
+                if hasattr(env, 'set_curriculum_level'):
+                    env.set_curriculum_level(level)
+
+        # 情况 B: 多进程并行模式 (SubprocVecEnv / ShareSubprocVecEnv)
+        # 这种模式下，环境在别的进程里，不能直接访问
+        else:
+            self.envs.set_curriculum_level(level)
     def warmup(self):
         # reset env
         obs = self.envs.reset()
