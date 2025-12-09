@@ -5,7 +5,7 @@ from typing import List
 import numpy as np
 import torch
 
-from algorithms.utils.buffer import SharedReplayBuffer
+from algorithms.utils.buffer import SharedReplayBuffer, TransformerSharedReplayBuffer
 from .base_runner import Runner
 
 
@@ -26,6 +26,9 @@ class ShareJSBSimRunner(Runner):
         if self.algorithm_name == "mappo":
             from algorithms.mappo.ppo_trainer import PPOTrainer as Trainer
             from algorithms.mappo.ppo_policy import PPOPolicy as Policy
+        elif self.algorithm_name == "transformer":
+            from algorithms.transformer.ppo_trainer import PPOTrainer as Trainer
+            from algorithms.transformer.ppo_policy import PPOPolicy as Policy
         else:
             raise NotImplementedError
         self.policy = Policy(self.all_args, self.obs_space, self.share_obs_space, self.act_space, device=self.device)
@@ -33,9 +36,21 @@ class ShareJSBSimRunner(Runner):
 
         # buffer
         if self.use_selfplay:
-            self.buffer = SharedReplayBuffer(self.all_args, self.num_agents // 2, self.obs_space, self.share_obs_space, self.act_space)
+            if self.algorithm_name == "mappo":
+                self.buffer = SharedReplayBuffer(self.all_args, self.num_agents // 2, self.obs_space, self.share_obs_space, self.act_space)
+            elif self.algorithm_name == "transformer":
+                self.buffer = TransformerSharedReplayBuffer(self.all_args, self.num_agents // 2, self.obs_space,
+                                                 self.share_obs_space, self.act_space)
+            else:
+                raise NotImplementedError
         else:
-            self.buffer = SharedReplayBuffer(self.all_args, self.num_agents, self.obs_space, self.share_obs_space, self.act_space)
+            if self.algorithm_name == "mappo":
+                self.buffer = SharedReplayBuffer(self.all_args, self.num_agents, self.obs_space, self.share_obs_space, self.act_space)
+            elif self.algorithm_name == "transformer":
+                self.buffer = TransformerSharedReplayBuffer(self.all_args, self.num_agents, self.obs_space, self.share_obs_space,
+                                                 self.act_space)
+            else:
+                raise NotImplementedError
 
         # [Selfplay] allocate memory for opponent policy/data in training
         if self.use_selfplay:

@@ -266,7 +266,6 @@ class ReplayBuffer(Buffer):
             yield obs_batch, actions_batch, masks_batch, old_action_log_probs_batch, advantages_batch, \
                 returns_batch, value_preds_batch, rnn_states_actor_batch, rnn_states_critic_batch
 
-
 class SharedReplayBuffer(ReplayBuffer):
 
     def __init__(self, args, num_agents, obs_space, share_obs_space, act_space):
@@ -447,3 +446,210 @@ class SharedReplayBuffer(ReplayBuffer):
             yield obs_batch, share_obs_batch, actions_batch, masks_batch, active_masks_batch, \
                 old_action_log_probs_batch, advantages_batch, returns_batch, value_preds_batch, \
                 rnn_states_actor_batch, rnn_states_critic_batch
+class TransformerSharedReplayBuffer(ReplayBuffer):
+
+    def __init__(self, args, num_agents, obs_space, share_obs_space, act_space):
+        # env config
+        self.num_agents = num_agents
+        self.n_rollout_threads = args.n_rollout_threads
+        # buffer config
+        self.gamma = args.gamma
+        self.buffer_size = args.buffer_size
+        self.use_proper_time_limits = args.use_proper_time_limits
+        self.use_gae = args.use_gae
+        self.gae_lambda = args.gae_lambda
+        # rnn config
+        self.mem_len = args.data_chunk_length
+        self.recurrent_hidden_size = args.recurrent_hidden_size
+        self.recurrent_hidden_layers = args.recurrent_hidden_layers
+
+        obs_shape = get_shape_from_space(obs_space)
+        share_obs_shape = get_shape_from_space(share_obs_space)
+        act_shape = get_shape_from_space(act_space)
+
+        # (o_0, s_0, a_0, r_0, d_0, ..., o_T, s_T)
+        self.obs = np.zeros((self.buffer_size + 1, self.n_rollout_threads, self.num_agents, *obs_shape), dtype=np.float32)
+        self.share_obs = np.zeros((self.buffer_size + 1, self.n_rollout_threads, self.num_agents, *share_obs_shape), dtype=np.float32)
+        self.actions = np.zeros((self.buffer_size, self.n_rollout_threads, self.num_agents, *act_shape), dtype=np.float32)
+        self.rewards = np.zeros((self.buffer_size, self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+        # NOTE: masks[t] = 1 - dones[t-1], which represents whether obs[t] is a terminal state .... same for all agents
+        self.masks = np.ones((self.buffer_size + 1, self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+        self.bad_masks = np.ones_like(self.masks)
+        # NOTE: active_masks[t, :, i] represents whether agent[i] is alive in obs[t] .... differ in different agents
+        self.active_masks = np.ones_like(self.masks)
+        # pi(a)
+        self.action_log_probs = np.zeros((self.buffer_size, self.n_rollout_threads, self.num_agents, *act_shape), dtype=np.float32)
+        # V(o), R(o) while advantage = returns - value_preds
+        self.value_preds = np.zeros((self.buffer_size + 1, self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+        self.returns = np.zeros((self.buffer_size + 1, self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+        # rnn
+        # 原 shape: (T, N, A, Layers, Dim)
+        # 新 shape: (T, N, A, Layers, Mem_Len, Dim)
+        self.rnn_states_actor = np.zeros(
+            (self.buffer_size + 1, self.n_rollout_threads, self.num_agents,
+             self.recurrent_hidden_layers, self.mem_len, self.recurrent_hidden_size),
+            dtype=np.float32
+        )
+        self.rnn_states_critic = np.zeros_like(self.rnn_states_actor)
+
+        self.step = 0
+
+    # def insert(self,
+    #            obs: np.ndarray,
+    #            share_obs: np.ndarray,
+    #            actions: np.ndarray,
+    #            rewards: np.ndarray,
+    #            masks: np.ndarray,
+    #            action_log_probs: np.ndarray,
+    #            value_preds: np.ndarray,
+    #            rnn_states_actor: np.ndarray,
+    #            rnn_states_critic: np.ndarray,
+    #            bad_masks: Union[np.ndarray, None] = None,
+    #            active_masks: Union[np.ndarray, None] = None,
+    #            available_actions: Union[np.ndarray, None] = None):
+    #     """Insert numpy data.
+    #     Args:
+    #         obs:                o_{t+1}
+    #         share_obs:          s_{t+1}
+    #         actions:            a_{t}
+    #         rewards:            r_{t}
+    #         masks:              1 - done_{t}
+    #         action_log_probs:   log_prob(a_{t})
+    #         value_preds:        value(o_{t})
+    #         rnn_states_actor:   ha_{t+1}
+    #         rnn_states_critic:  hc_{t+1}
+    #         active_masks:       1 - agent_done_{t}
+    #     """
+    #     self.share_obs[self.step + 1] = share_obs.copy()
+    #     if active_masks is not None:
+    #         self.active_masks[self.step + 1] = active_masks.copy()
+    #     if available_actions is not None:
+    #         pass
+    #     return super().insert(obs, actions, rewards, masks, action_log_probs, value_preds, rnn_states_actor, rnn_states_critic)
+
+    def insert(self, obs, share_obs, actions, rewards, masks, action_log_probs,
+               value_preds, rnn_states_actor, rnn_states_critic,
+               bad_masks=None, active_masks=None, available_actions=None):
+
+        self.share_obs[self.step + 1] = share_obs.copy()
+        if active_masks is not None:
+            self.active_masks[self.step + 1] = active_masks.copy()
+
+        # super().insert() 逻辑太简单，这里完整写出以防万一
+        self.obs[self.step + 1] = obs.copy()
+        self.rnn_states_actor[self.step + 1] = rnn_states_actor.copy()
+        self.rnn_states_critic[self.step + 1] = rnn_states_critic.copy()
+        self.actions[self.step] = actions.copy()
+        self.action_log_probs[self.step] = action_log_probs.copy()
+        self.value_preds[self.step] = value_preds.copy()
+        self.rewards[self.step] = rewards.copy()
+        self.masks[self.step + 1] = masks.copy()
+        if bad_masks is not None:
+            self.bad_masks[self.step + 1] = bad_masks.copy()
+
+        self.step = (self.step + 1) % self.buffer_size
+
+    def after_update(self):
+        self.active_masks[0] = self.active_masks[-1].copy()
+        self.share_obs[0] = self.share_obs[-1].copy()
+        return super().after_update()
+
+    def recurrent_generator(self, advantages, num_mini_batch=None, data_chunk_length=None):
+        """
+        修复版 Recurrent Generator
+        保证：
+        1. 采样的序列在 Time 维度绝对连续 (e.g. [300, 301, 302, 303, 304])
+        2. 绝对不跨越 Thread 边界
+        3. RNN State 只取 Chunk 开头的那个时刻
+        """
+        episode_length, n_rollout_threads = self.rewards.shape[0:2]
+        batch_size = n_rollout_threads * episode_length
+
+        if data_chunk_length is None:
+            data_chunk_length = 1
+
+        if num_mini_batch is None:
+            num_mini_batch = 1
+
+        # === 1. 计算 Chunk 数量与维度 ===
+        # 每个 Thread 能切分出多少个完整的 Chunk (丢弃末尾不足 chunk_len 的部分)
+        num_chunks_per_thread = episode_length // data_chunk_length
+
+        # 总共有多少个 Chunk 可供训练
+        total_chunks = n_rollout_threads * num_chunks_per_thread
+
+        # 这一步是为了防止 mini_batch 数量设置不合理导致报错
+        if total_chunks == 0:
+            return
+
+            # 生成所有 Chunk 的唯一 ID [0, 1, ..., total_chunks-1]
+        rand_chunk_indices = np.random.permutation(total_chunks)
+
+        # 计算每个 Mini-Batch 包含多少个 Chunk
+        mini_batch_size = total_chunks // num_mini_batch
+
+        # === 2. 开始生成 Mini-Batch ===
+        for i in range(num_mini_batch):
+            # 获取当前 Batch 分配到的 Chunk IDs
+            start_id = i * mini_batch_size
+            end_id = min((i + 1) * mini_batch_size, total_chunks)
+            batch_chunk_ids = rand_chunk_indices[start_id:end_id]
+
+            # --- 核心修复：坐标解析 ---
+            # 将 1D 的 Chunk ID 解析回 (Thread, Time) 坐标
+            # 1. 确定是哪个线程
+            thread_ids = batch_chunk_ids // num_chunks_per_thread
+
+            # 2. 确定是该线程的第几个 Chunk
+            temporal_ids = batch_chunk_ids % num_chunks_per_thread
+
+            # 3. 确定该 Chunk 在 Buffer 中的精确起始时间步 t
+            start_times = temporal_ids * data_chunk_length
+
+            # --- 构建向量化索引 (Advanced Indexing) ---
+            # 我们需要提取 (Batch_Size, Chunk_Length, ...) 的数据
+
+            # 创建 Time 索引网格: shape (Batch_Size, Chunk_Len)
+            # 例如 start_times=[0, 100], chunk_len=2 -> [[0, 1], [100, 101]]
+            time_inds = start_times[:, None] + np.arange(data_chunk_length)[None, :]
+
+            # 创建 Thread 索引网格: shape (Batch_Size, Chunk_Len)
+            # 利用广播机制复制 thread_id
+            thread_inds = thread_ids[:, None]  # (Batch, 1) -> Broadcast to (Batch, Chunk_Len)
+
+            # === 3. 提取数据 ===
+            # 使用 numpy 的高级索引 buffer[time_inds, thread_inds]
+            # 假设 Buffer 内部存储通常是 (Time, Thread, Dim...)
+
+            # 必须提取的数据
+            share_obs_batch = self.share_obs[time_inds, thread_inds]
+            obs_batch = self.obs[time_inds, thread_inds]
+            actions_batch = self.actions[time_inds, thread_inds]
+            value_preds_batch = self.value_preds[time_inds, thread_inds]
+            return_batch = self.returns[time_inds, thread_inds]
+            masks_batch = self.masks[time_inds, thread_inds]
+            active_masks_batch = self.active_masks[time_inds, thread_inds]
+            old_action_log_probs_batch = self.action_log_probs[time_inds, thread_inds]
+            adv_targ_batch = advantages[time_inds, thread_inds]
+
+            # 提取 RNN States
+            # 注意：RNN State 我们只需要 Chunk 起始位置的那一个，不需要序列！
+            # shape 变为 (Batch_Size, Reccurent_N, Hidden_Dim)
+            rnn_states_batch = self.rnn_states[start_times, thread_ids]
+            rnn_states_critic_batch = self.rnn_states_critic[start_times, thread_ids]
+
+            # 这是一个可选项，有些算法需要 available_actions
+            if self.available_actions is not None:
+                available_actions_batch = self.available_actions[time_inds, thread_inds]
+            else:
+                available_actions_batch = None
+
+            # === 4. Yield 数据 ===
+            # 此时数据的 shape 为 (Batch_Size, Chunk_Len, Dim...)
+            # 如果你的 Update 逻辑需要 Flatten (Batch*Time, Dim)，请在 Update 处 view(-1, ...)，
+            # 但通常 Recurrent Policy 需要保持 Time 维度。
+
+            yield share_obs_batch, obs_batch, rnn_states_batch, rnn_states_critic_batch, \
+                actions_batch, value_preds_batch, return_batch, masks_batch, \
+                active_masks_batch, old_action_log_probs_batch, adv_targ_batch, \
+                available_actions_batch
