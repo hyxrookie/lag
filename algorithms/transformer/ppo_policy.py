@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from .ppo_actor import PPOActor
 from .ppo_critic import PPOCritic
@@ -26,7 +27,7 @@ class PPOPolicy:
     def get_actions(self, cent_obs, obs, rnn_states_actor, rnn_states_critic, masks):
         # rnn_states_actor 现在是 (Layers, Mem_Len, Batch, Hidden)
         # obs: (Batch, Dim) -> (Batch, 1, Dim) inside Actor
-        actions, action_log_probs, rnn_states_actor = self.actor(obs, rnn_states_actor, masks)
+        actions, action_log_probs, rnn_states_actor = self.actor(np.expand_dims(obs, axis=1), rnn_states_actor, masks)
         values, rnn_states_critic = self.critic(cent_obs, rnn_states_critic, masks)
         return values, actions, action_log_probs, rnn_states_actor, rnn_states_critic
 

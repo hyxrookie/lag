@@ -554,7 +554,7 @@ class TransformerSharedReplayBuffer(ReplayBuffer):
         self.share_obs[0] = self.share_obs[-1].copy()
         return super().after_update()
 
-    def recurrent_generator(self, advantages, num_mini_batch=None, data_chunk_length=None):
+    def recurrent_generator(self, advantages: np.ndarray, num_mini_batch: int, data_chunk_length: int):
         """
         修复版 Recurrent Generator
         保证：
@@ -562,9 +562,8 @@ class TransformerSharedReplayBuffer(ReplayBuffer):
         2. 绝对不跨越 Thread 边界
         3. RNN State 只取 Chunk 开头的那个时刻
         """
-        episode_length, n_rollout_threads = self.rewards.shape[0:2]
-        batch_size = n_rollout_threads * episode_length
-
+        buffer_size, n_rollout_threads = self.buffer_size, self.n_rollout_threads
+        batch_size = n_rollout_threads * buffer_size
         if data_chunk_length is None:
             data_chunk_length = 1
 
@@ -573,7 +572,7 @@ class TransformerSharedReplayBuffer(ReplayBuffer):
 
         # === 1. 计算 Chunk 数量与维度 ===
         # 每个 Thread 能切分出多少个完整的 Chunk (丢弃末尾不足 chunk_len 的部分)
-        num_chunks_per_thread = episode_length // data_chunk_length
+        num_chunks_per_thread = buffer_size // data_chunk_length
 
         # 总共有多少个 Chunk 可供训练
         total_chunks = n_rollout_threads * num_chunks_per_thread
@@ -635,21 +634,15 @@ class TransformerSharedReplayBuffer(ReplayBuffer):
             # 提取 RNN States
             # 注意：RNN State 我们只需要 Chunk 起始位置的那一个，不需要序列！
             # shape 变为 (Batch_Size, Reccurent_N, Hidden_Dim)
-            rnn_states_batch = self.rnn_states[start_times, thread_ids]
+            rnn_states_batch = self.rnn_states_actor[start_times, thread_ids]
             rnn_states_critic_batch = self.rnn_states_critic[start_times, thread_ids]
 
-            # 这是一个可选项，有些算法需要 available_actions
-            if self.available_actions is not None:
-                available_actions_batch = self.available_actions[time_inds, thread_inds]
-            else:
-                available_actions_batch = None
 
             # === 4. Yield 数据 ===
             # 此时数据的 shape 为 (Batch_Size, Chunk_Len, Dim...)
             # 如果你的 Update 逻辑需要 Flatten (Batch*Time, Dim)，请在 Update 处 view(-1, ...)，
             # 但通常 Recurrent Policy 需要保持 Time 维度。
 
-            yield share_obs_batch, obs_batch, rnn_states_batch, rnn_states_critic_batch, \
-                actions_batch, value_preds_batch, return_batch, masks_batch, \
-                active_masks_batch, old_action_log_probs_batch, adv_targ_batch, \
-                available_actions_batch
+            yield obs_batch, share_obs_batch, actions_batch, masks_batch, active_masks_batch,\
+                 old_action_log_probs_batch, adv_targ_batch, return_batch, value_preds_batch, \
+                rnn_states_batch, rnn_states_critic_batch

@@ -180,60 +180,6 @@ class SpatialAttention(nn.Module):
         return output[:, 0, :]
 
 
-class GatedTransformerBlock(nn.Module):
-    """
-    GTrXL 核心 Block: Identity Map + Gating
-    """
-
-    def __init__(self, d_model, nhead, dropout=0.0):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(d_model)
-        self.attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=False)  # Keep Torch default dim
-        self.norm2 = nn.LayerNorm(d_model)
-        self.ffn = nn.Sequential(
-            nn.Linear(d_model, d_model * 2),
-            nn.GELU(),
-            nn.Linear(d_model * 2, d_model)
-        )
-
-        # 门控参数
-        self.gate1 = nn.Linear(d_model, d_model)
-        self.gate2 = nn.Linear(d_model, d_model)
-
-        # 初始化 Bias 使其初始状态接近 Identity (g -> 1)
-        nn.init.constant_(self.gate1.bias, 2.0)
-        nn.init.constant_(self.gate2.bias, 2.0)
-
-    def forward(self, x, mems=None):
-        # x: (Seq, Batch, Dim) - 注意这里是 Seq First，为了方便处理 Memory
-        # mems: (Mem_Len, Batch, Dim)
-
-        # 1. 拼接 Memory
-        if mems is not None:
-            cat_input = torch.cat([mems, x], dim=0)
-        else:
-            cat_input = x
-
-        # 2. Attention Part
-        u = self.norm1(x)
-        # 注意: 我们只对当前的 x 进行 query，但 key 和 value 来自 cat_input (包含历史)
-        # 需要生成 causal mask 保证 x 只能看自己之前的
-        attn_out, _ = self.attn(query=u, key=cat_input, value=cat_input)
-
-        # Gating 1
-        g1 = torch.sigmoid(self.gate1(u))
-        x = x + g1 * attn_out  # 这里也可以是 g * x + (1-g) * attn_out，具体看论文变体，这里用残差门控
-
-        # 3. FFN Part
-        v = self.norm2(x)
-        ffn_out = self.ffn(v)
-
-        # Gating 2
-        g2 = torch.sigmoid(self.gate2(v))
-        x = x + g2 * ffn_out
-
-        return x
-
 
 class GatedTransformerBlock(nn.Module):
     """
@@ -259,10 +205,13 @@ class GatedTransformerBlock(nn.Module):
         # x: (Seq_Len, Batch, Dim)
         # mems: (Mem_Len, Batch, Dim)
 
+
         seq_len = x.shape[0]
 
         # 1. 拼接 Memory
         if mems is not None:
+            if mems.shape[0] == x.shape[1] and mems.shape[1] != x.shape[1]:
+                mems = mems.transpose(0, 1)
             cat_input = torch.cat([mems, x], dim=0)
             mem_len = mems.shape[0]
         else:

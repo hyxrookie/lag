@@ -53,6 +53,20 @@ class PPOTrainer():
         # values: (Batch, Seq, 1)
         # action_log_probs: (Batch, Seq, 1)
 
+        # 1. 处理 old_action_log_probs_batch
+        # 如果 Buffer 里存的是 [Batch, Seq, Agents, 4]，我们需要求和变成 [Batch, Seq, Agents, 1]
+        if old_action_log_probs_batch.shape[-1] > 1:
+            old_action_log_probs_batch = old_action_log_probs_batch.sum(dim=-1, keepdim=True)
+
+        # 2. 展平 (Flatten)
+        old_action_log_probs_batch = old_action_log_probs_batch.view(-1, 1)
+
+        # 3. 处理 action_log_probs (新计算出的)
+        # 通常 evaluate_actions 内部对于连续动作已经求过和了，但为了保险起见：
+        if action_log_probs.shape[-1] > 1:
+            action_log_probs = action_log_probs.sum(dim=-1, keepdim=True)
+        action_log_probs = action_log_probs.view(-1, 1)
+
         # --- Flatten 所有维度进行 Loss 计算 ---
         # PPO Loss 通常把 (Batch, Seq) 视为独立的样本
 
