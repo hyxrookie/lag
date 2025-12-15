@@ -38,44 +38,53 @@ class MissileConfig:
     explosion_radius: float  # 杀伤半径/近炸引信距离 (m)
     max_life_time: float  # 最大生存时间 (s), 超过时间自毁
 
+    notch_threshold: float  # 多普勒缺口:
+    guidance_delay: float  # 发射后延迟
+    radar_range: float  #导引头主动探测距离 (Active Seeker Range)
+
 
 # 导弹参数数据库
 MISSILE_DB = {
     # === AIM-9L (响尾蛇) ===
     # 特点：红外制导，射程短，但视场较宽(离轴发射能力)，适合近距格斗
-    "AIM-9L": MissileConfig(
-        name="AIM-9L",
-        mass_0=84.0,
-        mass_loss_rate=6.0,
-        thrust_duration=5.0,
-        isp=180.0,
-        diameter=0.127,
-        length=2.87,
-        drag_coeff=0.4,
-        max_g=30.0,
-        seeker_fov=40.0,  # 较宽的视场，不容易脱锁
-        nav_gain=3.0,
-        explosion_radius=200.0,
-        max_life_time=60.0
-    ),
+    # "AIM-9L": MissileConfig(
+    #     name="AIM-9L",
+    #     mass_0=84.0,
+    #     mass_loss_rate=6.0,
+    #     thrust_duration=5.0,
+    #     isp=180.0,
+    #     diameter=0.127,
+    #     length=2.87,
+    #     drag_coeff=0.4,
+    #     max_g=30.0,
+    #     seeker_fov=40.0,  # 较宽的视场，不容易脱锁
+    #     nav_gain=3.0,
+    #     explosion_radius=200.0,
+    #     max_life_time=60.0
+    # ),
 
     # === AIM-120B (AMRAAM) ===
     # 特点：中程主动雷达制导，速度快，射程远，但末端雷达视场较窄。
     # 模拟策略：发射即主动(Mad Dog)，如果敌机进行大幅度机动(Notching/Beaming)导致角度变化过大，容易脱锁。
     "AIM-120B": MissileConfig(
         name="AIM-120B",
-        mass_0=152.0,
-        mass_loss_rate=8.0,
-        thrust_duration=10.0,
-        isp=245.0,  # 更高的比冲，速度更快
+        mass_0=156.0,  # [图片数据]
+        mass_loss_rate=8.5,  # [估算]
+        thrust_duration=6.0,  # [图片数据]
+        isp=260.0,
         diameter=0.18,
         length=3.66,
-        drag_coeff=0.35,  # 气动外形更好
-        max_g=28.0,
-        seeker_fov=20.0,  # 较窄的视场，对敌机机动敏感 (核心博弈点)
-        nav_gain=4.0,  # 导引律更激进
-        explosion_radius=400.0,
-        max_life_time=120.0
+        drag_coeff=0.28,
+        max_g=50.0,  # [图片数据]
+        seeker_fov=60.0,  # [逻辑修正] 改为60度以免轻易脱锁
+        nav_gain=4.0,
+        explosion_radius=15.0,  # [图片数据]
+        max_life_time=80.0,  # [图片数据]
+
+        # === 只新增这两个参数 ===
+        notch_threshold=50.0,  # 多普勒缺口: 相对速度小于15m/s丢失
+        guidance_delay=1.0,  # 发射后延迟1秒才制导
+        radar_range=40000.0  #  40km
     )
 }
 
@@ -112,13 +121,21 @@ class BaseSimulator(ABC):
     @property
     def dt(self) -> float: return self.__dt
 
-    def get_geodetic(self): return self._geodetic
+    def get_geodetic(self):
+        """(lontitude, latitude, altitude), unit: °, m"""
+        return self._geodetic
 
-    def get_position(self): return self._position
+    def get_position(self):
+        """(north, east, up), unit: m"""
+        return self._position
 
-    def get_rpy(self): return self._posture
+    def get_rpy(self):
+        """(roll, pitch, yaw), unit: rad"""
+        return self._posture
 
-    def get_velocity(self): return self._velocity
+    def get_velocity(self):
+        """(v_north, v_east, v_up), unit: m/s"""
+        return self._velocity
 
     def reload(self):
         """重置状态"""
@@ -335,6 +352,7 @@ class AircraftSimulator(BaseSimulator):
         if new_state is not None: self.init_state = new_state
         if new_origin is not None: self.lon0, self.lat0, self.alt0 = new_origin
         for key, value in self.init_state.items():
+            print("key:{}:value:{}".format(key, value))
             self.set_property_value(Catalog[key], value)
 
         success = self.jsbsim_exec.run_ic()
@@ -346,6 +364,7 @@ class AircraftSimulator(BaseSimulator):
         for j in range(propulsion.get_num_engines()):
             propulsion.get_engine(j).init_running()
         propulsion.get_steady_state()
+        print(self.get_property_value(Catalog.position_h_sl_m))
 
         self._update_properties()
 
@@ -371,12 +390,13 @@ class AircraftSimulator(BaseSimulator):
             result = self.jsbsim_exec.run()
             # 注意: 这里根据 JSBSim版本不同，返回 False 可能意味着结束也可能意味着错误
             # 这里为了稳健通常只更新属性
-            if not result: pass
+            if not result:
+                raise RuntimeError("JSBSim failed.")
 
             self._update_properties()
 
             self.update_warnings()
-            return True
+            return result
         else:
             return True
 
@@ -445,13 +465,21 @@ class AircraftSimulator(BaseSimulator):
         for p, v in zip(props, values): self.set_property_value(p, v)
 
     def get_property_value(self, prop):
-        if isinstance(prop, Property): return self.jsbsim_exec.get_property_value(prop.name_jsbsim)
-        raise ValueError(f"Unknown prop: {prop}")
+        if isinstance(prop, Property):
+            if prop.access == "R":
+                if prop.update:
+                    prop.update(self)
+            return self.jsbsim_exec.get_property_value(prop.name_jsbsim)
+        else:
+            raise ValueError(f"prop type unhandled: {type(prop)} ({prop})")
 
     def set_property_value(self, prop, value):
         if isinstance(prop, Property):
             value = max(prop.min, min(prop.max, value))
             self.jsbsim_exec.set_property_value(prop.name_jsbsim, value)
+            if "W" in prop.access:
+                if prop.update:
+                    prop.update(self)
         else:
             raise ValueError(f"Unknown prop: {prop}")
 
@@ -555,7 +583,7 @@ class MissileSimulator(BaseSimulator):
     # --- 状态判断属性 ---
     @property
     def is_alive(self):
-        return self._state in [MissileState.SEARCHING, MissileState.TRACKING]
+        return self._state in [MissileState.TRACKING, MissileState.INS_GUIDANCE, MissileState.SEARCHING]
 
     @property
     def is_success(self):
@@ -572,13 +600,27 @@ class MissileSimulator(BaseSimulator):
 
     @property
     def S(self):
-        """横截面积"""
-        return np.pi * (self.config.diameter / 2) ** 2
+        """Cross-Sectional area, unit m^2"""
+        S0 = np.pi * (self.config.diameter / 2) ** 2
+        return S0
+
 
     @property
     def rho(self):
-        """根据高度估算空气密度"""
+        """Air Density, unit: kg/m^3"""
+        # approximate expression
         return 1.225 * np.exp(-self._geodetic[-1] / 9300)
+        # exact expression (Reference: https://www.cnblogs.com/pathjh/p/9127352.html)
+        rho0, T0, h = 1.225, 288.15, self._geodetic[-1]
+        if h <= 11000:  # Troposphere
+            T = T0 - 0.0065 * h
+            return rho0 * (T / T0)**4.25588
+        elif h <= 20000:  # Lower Stratosphere
+            T = 216.65
+            return 0.36392 * np.exp((11000 - h) / 6341.62)
+        else:  # Upper Stratosphere
+            T = 216.65 + 0.001 * (h - 20000)
+            return 0.088035 * (T / 216.65)**(-35.1632)
 
     @property
     def is_locking(self):
@@ -609,7 +651,15 @@ class MissileSimulator(BaseSimulator):
     def target(self, target: AircraftSimulator):
         """指定攻击目标"""
         self.target_aircraft = target
-        self.target_aircraft.under_missiles.append(self)
+        self.target_aircraft.under_missiles.append(self) \
+        # === [修复] 初始化惯性制导记忆 ===
+        # 模拟载机在发射前通过数据链将目标的当前位置和速度注入导弹计算机
+        # 这样即使射程 > 40km (Pitbull range)，导弹也能飞向目标的预测位置，而不是飞向 (0,0,0)
+        self.last_known_pos[:] = target.get_position()
+        self.last_known_vel[:] = target.get_velocity()
+
+        # 重置丢失时间，确保刚发射时被视为“刚获得数据”
+        self.time_since_lost = 0.0
 
     def run(self):
         """导弹主循环：每帧调用"""
@@ -647,45 +697,241 @@ class MissileSimulator(BaseSimulator):
             self._state = MissileState.MISS
             return
 
+        # 【新增逻辑 1】: 1秒制导延迟
         # ========================================================
-        # 4. 导引头逻辑 (Seeker Logic) - 核心：脱锁与复锁
+        # 如果时间没到1秒，导弹只飞直线(受重力/推力)，不计算导引律
+        if self._t < self.config.guidance_delay:
+            # 传0过载，只进行物理积分
+            self._state_trans(np.array([0.0, 0.0]))
+            return
+
+        # ========================================================
+        # 4. 导引头逻辑 (增加了多普勒判定)
         # ========================================================
 
         vel_m = self.get_velocity()
-        # 单位向量化
+        speed_m = np.linalg.norm(vel_m)
         los_unit = dist_vector / (distance + 1e-6)
-        vel_unit = vel_m / (speed + 1e-6)
+        vel_unit = vel_m / (speed_m + 1e-6)
 
-        # 计算 Boresight Angle (导弹机头与目标连线的夹角)
-        cos_angle = np.clip(np.dot(vel_unit, los_unit), -1.0, 1.0)
-        angle_deg = np.degrees(np.arccos(cos_angle))
+        # 角度计算 (原逻辑)
+        # cos_angle = np.clip(np.dot(vel_unit, los_unit), -1.0, 1.0)
+        # angle_deg = np.degrees(np.arccos(cos_angle))
+        # in_fov = angle_deg < self.config.seeker_fov
+        in_fov, _ = self.check_seeker_lock(pos_t)
 
-        # 检查目标是否在导引头视场(FOV)内
-        in_fov = angle_deg < self.config.seeker_fov
+        # ========================================================
+        # 【新增逻辑 2】: 多普勒缺口 (Notch)
+        vel_t = self.target_aircraft.get_velocity()
+        # 1. 计算目标径向速度 (Target Radial Velocity)
+        # 注意：不要叫它 closing_vel，它是目标自身朝向导弹的分量
+        target_radial_vel = np.dot(vel_t, los_unit)
 
-        if in_fov:
-            # 如果之前是搜索状态，现在找到了 -> 复锁
-            if self._state == MissileState.SEARCHING:
-                pass  # 可以加日志: print("Relocked!")
+        # 2. 判断是否处于“切向飞行”状态 (Beaming)
+        # 阈值建议：一般设为 10m/s - 20m/s 左右
+        is_beaming = abs(target_radial_vel) < self.config.notch_threshold
+
+        # 3. 判断背景环境 (Look-down / Look-up)
+        # 计算导弹到目标的俯仰关系。
+        # 如果目标高度比导弹低很多，或者是俯视攻击，Notch 才生效。
+        # 简单判定：导弹高度 > 目标高度 (或者视线向量的 Z 分量向下)
+        # 注意坐标系：假设 Z 轴向下为正(NED系)，则 pos_t[2] > pos_m[2] 意味着目标在下面
+        # 如果是 Y 轴向上(Unity/常规系)，则 pos_t[y] < pos_m[y]
+
+        #
+        is_look_down = pos_t[2] < pos_m[2]
+        print("导弹高度：{},目标高度:{}".format(pos_m[2], pos_t[2]))
+
+        # 4. 综合判定 Notch
+        # 只有在“下视”且“目标侧向飞行”时，多普勒雷达才会跟丢
+        is_notched = is_beaming and is_look_down
+
+        # 综合判定: 角度在范围内、在距离内 且 没掉进缺口，才算锁定
+        can_see_target = False
+
+        # 只有距离小于 40km，导引头才有可能看见目标
+        if distance <= self.config.radar_range:
+            if in_fov and (not is_notched):
+                can_see_target = True
+        if can_see_target:
+            # 【情况A】：锁定
             self._state = MissileState.TRACKING
+            self.last_known_pos[:] = pos_t
+            self.last_known_vel[:] = self.target_aircraft.get_velocity()
+            self.time_since_lost = 0.0
         else:
-            # 目标超出视场 -> 脱锁
-            if self._state == MissileState.TRACKING:
-                pass  # 可以加日志: print("Lost Lock!")
-            self._state = MissileState.SEARCHING
+            # 【情况B】：丢失 (角度大 或 进缺口)
+            self.time_since_lost += self.dt
+            if self.time_since_lost < self.memory_limit:
+                self._state = MissileState.INS_GUIDANCE
+            else:
+                self._state = MissileState.SEARCHING
 
         # ========================================================
-        # 5. 制导律计算
+        # 5. 制导律计算 (根据不同状态)
         # ========================================================
 
-        action = np.array([0.0, 0.0])  # 默认无过载 (惯性/弹道飞行)
+        action = np.array([0.0, 0.0])
 
         if self._state == MissileState.TRACKING:
-            # 仅在锁定时计算比例导引 (PN)
+            # 正常 PN 制导，攻击真实目标
             action = self._guidance_pn(pos_m, vel_m, pos_t, self.target_aircraft.get_velocity())
+
+        elif self._state == MissileState.INS_GUIDANCE:
+            # [核心修改] INS 制导：攻击“幽灵目标”
+
+            # 1. 推算幽灵目标当前位置： P_ghost = P_last + V_last * t_lost
+            ghost_pos = self.last_known_pos + self.last_known_vel * self.time_since_lost
+
+            # 2. 假设幽灵目标还在做匀速直线运动 (V_ghost = V_last)
+            ghost_vel = self.last_known_vel
+
+            vec_to_ghost = ghost_pos - pos_m
+            dist_to_ghost = np.linalg.norm(vec_to_ghost)
+
+            # 归一化
+            los_unit_ghost = vec_to_ghost / (dist_to_ghost + 1e-6)
+
+            # 计算夹角余弦值 (导弹速度方向 vs 指向幽灵目标方向)
+            cos_look_angle = np.dot(vel_unit, los_unit_ghost)
+
+            # 判定 A: 目标是否在身后 (夹角 > 90度, cos < 0)
+            # 判定 B: 即使没在正后方，如果夹角太大(比如 > 60度)，导弹此时能量通常不足以掉头
+            # 这里设置为 0.0 (90度) 作为绝对底线，建议设置为 0.5 (60度) 或更严格
+            if cos_look_angle < 0.0:
+                self._state = MissileState.MISS
+                return  # 直接退出，不再计算过载
+
+            # 3. 对着幽灵打！
+            # 注意：这里我们调用 PN，让导弹努力飞向预测点。
+            # 一旦导弹转弯够快，把 Ghost 纳入 FOV，下一帧可能会重新捕获真实目标(如果它在Ghost附近)
+            # 或者，如果 Ghost 还在 FOV 外，至少导弹在往正确的方向转。
+            action = self._guidance_pn(pos_m, vel_m, ghost_pos, ghost_vel)
+
+        elif self._state == MissileState.SEARCHING:
+            # 搜索模式：通常导弹会保持直线飞行，或者做一个轻微的桶滚扫描
+            # 这里为了简化，保持0过载
+            action = np.array([0.0, 0.0])
 
         # 6. 执行物理更新
         self._state_trans(action)
+
+    def check_seeker_lock(self, target_pos):
+        """
+        判断目标是否在导引头视场内 (基于机头指向，而非速度矢量)
+        :param target_pos: 目标位置 (np.array or list), 格式需为 [North, East, Up]
+        :return: (is_locked, off_boresight_angle)
+        """
+
+        # 1. 获取姿态角 (单位: rad)
+        # get_rpy 返回的是 (roll, pitch, yaw)
+        _, pitch, yaw = self.get_rpy()
+
+        # 2. 计算机头指向向量 (Nose Vector) 在 NEU 坐标系下的分量
+        # 数学推导:
+        # North (X) = cos(theta) * cos(psi)
+        # East  (Y) = cos(theta) * sin(psi)
+        # Up    (Z) = sin(theta)  <--- 注意：因为是NEU坐标系，抬头为正，Z也为正，所以是正sin
+
+        nose_n = np.cos(pitch) * np.cos(yaw)
+        nose_e = np.cos(pitch) * np.sin(yaw)
+        nose_u = np.sin(pitch)
+
+        nose_unit = np.array([nose_n, nose_e, nose_u])
+
+        # 3. 获取位置并计算视线向量 (Line of Sight Vector)
+        my_pos = np.array(self.get_position())  # (North, East, Up)
+        target_pos = np.array(target_pos)  # 确保目标也是 (North, East, Up)
+
+        dist_vec = target_pos - my_pos
+        distance = np.linalg.norm(dist_vec)
+
+        # 归一化视线向量
+        los_unit = dist_vec / (distance + 1e-6)
+
+        # 4. 计算离轴角 (Off-Boresight Angle)
+        # 点积公式: a · b = |a||b|cos(theta) -> cos(theta) = a · b (因为都是单位向量)
+        cos_angle = np.clip(np.dot(nose_unit, los_unit), -1.0, 1.0)
+        angle_deg = np.degrees(np.arccos(cos_angle))
+
+        # 5. 判定
+        # 假设 seeker_fov 是视场半角限制 (即离轴角限制)
+        is_locked = angle_deg < self.config.seeker_fov
+
+        return is_locked, angle_deg
+    # TODO 动态调整阻力系数
+    # def drag_coeff(self):
+    #     """
+    #     根据当前马赫数动态计算阻力系数，模拟激波阻力。
+    #     """
+    #     # 简易声速计算 (m/s)
+    #     altitude = self._geodetic[2]
+    #     # 标准大气温随高度变化简单模型
+    #     temp = max(216.65, 288.15 - 0.0065 * altitude)
+    #     speed_of_sound = np.sqrt(1.4 * 287.0 * temp)
+    #
+    #     v = np.linalg.norm(self.get_velocity())
+    #     mach = v / (speed_of_sound + 1e-6)
+    #
+    #     base_cd = self.config.drag_coeff  # 基础值 0.28
+    #
+    #     # 阻力系数曲线模拟
+    #     if mach < 0.8:
+    #         return base_cd
+    #     elif 0.8 <= mach <= 1.2:
+    #         # 跨音速区阻力激增 (峰值假设为 2.5倍 base_cd)
+    #         peak_cd = base_cd * 2.5
+    #         if mach <= 1.0:
+    #             return base_cd + (peak_cd - base_cd) * ((mach - 0.8) / 0.2)
+    #         else:
+    #             return peak_cd - (peak_cd - base_cd) * ((mach - 1.0) / 0.2)
+    #     else:
+    #         # 超音速区阻力缓慢下降，但仍高于亚音速
+    #         return base_cd * 1.5
+
+    def drag_coeff(self):
+        v = np.linalg.norm(self.get_velocity())
+        # 简单的声速计算
+        altitude = self._geodetic[2]
+        temp = 288.15 - 0.0065 * min(altitude, 11000)
+        if altitude > 11000: temp = 216.65
+        speed_of_sound = np.sqrt(1.4 * 287.0 * temp)
+
+        mach = v / (speed_of_sound + 1e-6)
+
+        # # === 定义关键点 (Mach, Cd0) ===
+        # # 这些数据模拟了：
+        # # 1. 亚音速: 阻力较低 (0.3)
+        # # 2. 跨音速: 阻力剧增 (0.9 - 1.0)
+        # # 3. 超音速: 阻力随马赫数增加而平滑下降
+        # # 4. 高超音速: 维持在较低水平 (0.28)
+        # mach_points = [0.0, 0.8, 0.95, 1.05, 1.2, 1.5, 2.0, 3.0, 4.0, 5.0]
+        # cd_points = [0.30, 0.30, 0.50, 0.95, 0.85, 0.65, 0.50, 0.35, 0.28, 0.25]
+
+        # 来源参考: Tactical Missile Aerodynamics (Fleeman) & NASA Cruciform-Finned Body Data
+
+        mach_points = [0.0, 0.8, 0.95, 1.05, 1.2, 1.5, 2.0, 3.0, 4.0, 5.0]
+
+        # 解释:
+        # 0.0-0.8: 0.25 (基础摩擦+底部阻力)
+        # 1.05:    0.75 (跨音速激波峰值，带弹翼导弹的典型值)
+        # 2.0:     0.42 (超音速下降段，比你原来的 0.50 低，比我刚才的 0.22 高)
+        # 3.0+:    0.32 (高超音速平缓区，接近你原来的数值，这是准确的)
+
+        cd_points = [0.25, 0.25, 0.40, 0.75, 0.65, 0.52, 0.42, 0.32, 0.28, 0.26]
+
+        # === 使用 numpy 进行线性插值 ===
+        # np.interp 会自动处理连续性，并在超出范围时取边界值
+        cd0 = np.interp(mach, mach_points, cd_points)
+
+        # # === 加上诱导阻力 (保持你原来的逻辑或优化) ===
+        # # 假设这里的 self._alpha 是计算好的总攻角(弧度)
+        # # 细长体诱导阻力因子 k 通常在 2.0 - 4.0 之间
+        # total_alpha = np.sqrt(self._dtheta ** 2 + self._dphi ** 2)
+        # k_induced = 2.5
+        # cdi = k_induced * (total_alpha ** 2)
+        # print("cdi{}".format(cdi))
+        return cd0
 
     def _guidance_pn(self, p_m, v_m, p_t, v_t):
         """
@@ -748,14 +994,13 @@ class MissileSimulator(BaseSimulator):
         if v < 1e-3: return
 
         theta, phi = self.get_rpy()[1:]
-
         # 3. 计算推力与阻力
         T = 0.0
         if self._t < self.config.thrust_duration:
             T = self._g * self.Isp * self.config.mass_loss_rate
             self._m -= dt * self.config.mass_loss_rate
 
-        D = 0.5 * self.config.drag_coeff * self.S * self.rho * v ** 2
+        D = 0.5 * self.drag_coeff() * self.S * self.rho * v ** 2
 
         # 切向过载 (加速度/减速度)
         nx = (T - D) / (self._m * self._g)
