@@ -352,7 +352,6 @@ class AircraftSimulator(BaseSimulator):
         if new_state is not None: self.init_state = new_state
         if new_origin is not None: self.lon0, self.lat0, self.alt0 = new_origin
         for key, value in self.init_state.items():
-            print("key:{}:value:{}".format(key, value))
             self.set_property_value(Catalog[key], value)
 
         success = self.jsbsim_exec.run_ic()
@@ -364,7 +363,6 @@ class AircraftSimulator(BaseSimulator):
         for j in range(propulsion.get_num_engines()):
             propulsion.get_engine(j).init_running()
         propulsion.get_steady_state()
-        print(self.get_property_value(Catalog.position_h_sl_m))
 
         self._update_properties()
 
@@ -484,24 +482,21 @@ class AircraftSimulator(BaseSimulator):
             raise ValueError(f"Unknown prop: {prop}")
 
     def check_missile_warning(self):
+        for missile in self.under_missiles:
+            if missile.is_alive:
+                return missile
+        return None
+    def check_all_missile_warning(self):
         """
         RWR (雷达告警) 逻辑
         返回一个字典，告诉飞行员当前的威胁状态
         """
-        warning_status = {
-            'LOCKED': [],  # 致命威胁：导弹正在跟踪 (滴滴滴急促音)
-            'SEARCHING': []  # 潜在威胁：导弹已发射但暂时丢失目标 (断续音/静默)
-        }
+        warning_status = []
 
         for missile in self.under_missiles:
             if not missile.is_alive:
                 continue
-
-            # 调用刚才在 MissileSimulator 里加的属性
-            if missile.is_locking:
-                warning_status['LOCKED'].append(missile)
-            else:
-                warning_status['SEARCHING'].append(missile)
+            warning_status.append(missile)
 
         return warning_status
 
@@ -740,7 +735,6 @@ class MissileSimulator(BaseSimulator):
 
         #
         is_look_down = pos_t[2] < pos_m[2]
-        print("导弹高度：{},目标高度:{}".format(pos_m[2], pos_t[2]))
 
         # 4. 综合判定 Notch
         # 只有在“下视”且“目标侧向飞行”时，多普勒雷达才会跟丢

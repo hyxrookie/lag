@@ -56,7 +56,7 @@ def _get_prepare_config(parser: argparse.ArgumentParser):
     group = parser.add_argument_group("Prepare parameters")
     group.add_argument("--env-name", type=str, default='JSBSim',
                        help="specify the name of environment")
-    group.add_argument("--algorithm-name", type=str, default='ppo', choices=["ppo", "mappo"],
+    group.add_argument("--algorithm-name", type=str, default='ppo', choices=["ppo", "mappo", "st"],
                        help="Specifiy the algorithm (default ppo)")
     group.add_argument("--experiment-name", type=str, default="check",
                        help="An identifier to distinguish different experiment.")

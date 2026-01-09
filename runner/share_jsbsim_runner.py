@@ -26,6 +26,9 @@ class ShareJSBSimRunner(Runner):
         if self.algorithm_name == "mappo":
             from algorithms.mappo.ppo_trainer import PPOTrainer as Trainer
             from algorithms.mappo.ppo_policy import PPOPolicy as Policy
+        elif self.algorithm_name == "st":
+            from algorithms.st.ppo_trainer import PPOTrainer as Trainer
+            from algorithms.st.ppo_policy import PPOPolicy as Policy
         else:
             raise NotImplementedError
         self.policy = Policy(self.all_args, self.obs_space, self.share_obs_space, self.act_space, device=self.device)

@@ -33,8 +33,8 @@ render = True
 ego_policy_index = 0
 enm_policy_index = 0
 episode_rewards = 0
-ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
-enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
+ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run2/"
+enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run2/"
 experiment_name = ego_run_dir.split('/')[-4]
 env = MultipleCombatEnv(scenario_name)
 env.seed(0)
