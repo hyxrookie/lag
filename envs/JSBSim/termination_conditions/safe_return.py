@@ -1,3 +1,4 @@
+from .mylog import event_logger
 from .termination_condition_base import BaseTerminationCondition
 
 

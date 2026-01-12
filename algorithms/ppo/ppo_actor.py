@@ -43,10 +43,10 @@ class PPOActor(nn.Module):
             distance = obs[:, 13] * 10000 # unit m
             alpha0 = torch.full(size=(obs.shape[0],1), fill_value=3).to(**self.tpdv)
             beta0 = torch.full(size=(obs.shape[0],1), fill_value=10).to(**self.tpdv)
-            alpha0[distance<=12000] = 6
-            alpha0[distance<=8000] = 10
-            beta0[attack_angle<=45] = 6
-            beta0[attack_angle<=22.5] = 3
+            alpha0[distance<=40000] = 6
+            alpha0[distance<=20000] = 10
+            beta0[attack_angle<=35] = 6
+            beta0[attack_angle<=15] = 3
 
         actor_features = self.base(obs)
 

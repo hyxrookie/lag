@@ -55,6 +55,10 @@ class SingleCombatTask(BaseTask):
             c.accelerations_n_pilot_x_norm,     # 13. a_north   (unit: G)
             c.accelerations_n_pilot_y_norm,     # 14. a_east    (unit: G)
             c.accelerations_n_pilot_z_norm,     # 15. a_down    (unit: G)
+            c.velocities_p_rad_sec,  # 16. p (roll rate)  (unit: rad/s)
+            c.velocities_q_rad_sec,  # 17. q (pitch rate) (unit: rad/s)
+            c.velocities_r_rad_sec,  # 18. r (yaw rate)   (unit: rad/s)
+            c.velocities_mach  # 19 mach
         ]
         self.action_var = [
             c.fcs_aileron_cmd_norm,             # [-1., 1.]
@@ -191,11 +195,13 @@ class SingleCombatTask(BaseTask):
         if name == 'pursue':
             return PursueAgent()
         elif name == 'maneuver':
-            return ManeuverAgent(maneuver='n')
+            return ManeuverAgent(maneuver='triangle')
         elif name == 'dodge':
             return DodgeMissileAgent()
         elif name == 'straight':
             return StraightFlyAgent()
+        elif name =='missile':
+            return MissileAgent()
         else:
             raise NotImplementedError
 
@@ -222,13 +228,13 @@ class HierarchicalSingleCombatTask(SingleCombatTask):
         else:
             # generate low-level input_obs
             raw_obs = self.get_obs(env, agent_id)
-            input_obs = np.zeros(12)
+            input_obs = np.zeros(15)
             # (1) delta altitude/heading/velocity
             input_obs[0] = self.norm_delta_altitude[action[0]]
             input_obs[1] = self.norm_delta_heading[action[1]]
             input_obs[2] = self.norm_delta_velocity[action[2]]
             # (2) ego info
-            input_obs[3:12] = raw_obs[:9]
+            input_obs[3:15] = raw_obs[:12]
             input_obs = np.expand_dims(input_obs, axis=0)
             # output low-level action
             _action, _rnn_states = self.lowlevel_policy(input_obs, self._inner_rnn_states[agent_id])
@@ -363,10 +369,12 @@ class ManeuverAgent(BaselineAgent):
             self.target_heading_list = [np.pi/2, np.pi/2, np.pi/2, np.pi/2]
         elif maneuver == 'n':
             self.target_heading_list = [np.pi, np.pi, np.pi, np.pi]
+        elif maneuver == 'triangle':
+            self.target_heading_list = [np.pi / 3, np.pi, -np.pi / 3] * 2
         # self.target_altitude_list = [8000, 7000, 7500, 5500, 6000, 6000]
         # self.target_velocity_list = [340, 340, 340, 340, 243, 243]
-        self.target_altitude_list = [6096] * 4
-        self.target_velocity_list = [243] * 4
+        self.target_altitude_list = [6096] * 6
+        self.target_velocity_list = [300] * 6
 
     def reset(self):
         self.step = 0
@@ -468,3 +476,127 @@ class DodgeMissileAgent:
 
     def reset(self):
         self.rnn_states = np.zeros((1, 1, 128))
+
+class MissileAgent:
+    def __init__(self) -> None:
+        self.model_path = get_root_dir() + '/model/missile_model.pt'
+        self.actor = BaselineActor(input_dim=28, use_mlp_actlayer=True, action_dims=spaces.Tuple([spaces.MultiDiscrete([3, 5, 3]), spaces.Discrete(2)]))
+        self.actor.load_state_dict(torch.load(self.model_path, map_location=torch.device('cpu'), weights_only=True))
+        self.state_var = [
+            c.position_long_gc_deg,             # 0. lontitude  (unit: °)
+            c.position_lat_geod_deg,            # 1. latitude   (unit: °)
+            c.position_h_sl_m,                  # 2. altitude   (unit: m)
+            c.attitude_roll_rad,                # 3. roll       (unit: rad)
+            c.attitude_pitch_rad,               # 4. pitch      (unit: rad)
+            c.attitude_heading_true_rad,        # 5. yaw        (unit: rad)
+            c.velocities_v_north_mps,           # 6. v_north    (unit: m/s)
+            c.velocities_v_east_mps,            # 7. v_east     (unit: m/s)
+            c.velocities_v_down_mps,            # 8. v_down     (unit: m/s)
+            c.velocities_u_mps,                 # 9. v_body_x   (unit: m/s)
+            c.velocities_v_mps,                 # 10. v_body_y  (unit: m/s)
+            c.velocities_w_mps,                 # 11. v_body_z  (unit: m/s)
+            c.velocities_vc_mps,                # 12. vc        (unit: m/s)
+            c.accelerations_n_pilot_x_norm,     # 13. a_north   (unit: G)
+            c.accelerations_n_pilot_y_norm,     # 14. a_east    (unit: G)
+            c.accelerations_n_pilot_z_norm,     # 15. a_down    (unit: G)
+            c.velocities_p_rad_sec,  # 16. p (roll rate)  (unit: rad/s)
+            c.velocities_q_rad_sec,  # 17. q (pitch rate) (unit: rad/s)
+            c.velocities_r_rad_sec,  # 18. r (yaw rate)   (unit: rad/s)
+            c.velocities_mach  # 19 mach
+        ]
+        self.lowlevel_policy = BaselineActor()
+        self.lowlevel_policy.load_state_dict(torch.load(get_root_dir() + '/model/baseline_model.pt', map_location=torch.device('cpu'), weights_only=True))
+        self.lowlevel_policy.eval()
+        self.norm_delta_altitude = np.array([0.1, 0, -0.1])
+        self.norm_delta_heading = np.array([-np.pi / 6, -np.pi / 12, 0, np.pi / 12, np.pi / 6])
+        self.norm_delta_velocity = np.array([0.05, 0, -0.05])
+        self.reset()
+
+    def get_observation(self, sim: AircraftSimulator):
+        norm_obs = np.zeros(28)
+        ego_obs_list = np.array(sim.get_property_values(self.state_var))
+        enm_obs_list = np.array(sim.enemies[0].get_property_values(self.state_var))
+        # (0) extract feature: [north(km), east(km), down(km), v_n(mh), v_e(mh), v_d(mh)]
+        ego_cur_ned = LLA2NEU(*ego_obs_list[:3], 120.0, 60.0, 0.0)
+        enm_cur_ned = LLA2NEU(*enm_obs_list[:3], 120.0, 60.0, 0.0)
+        ego_feature = np.array([*ego_cur_ned, *(ego_obs_list[6:9])])
+        enm_feature = np.array([*enm_cur_ned, *(enm_obs_list[6:9])])
+        # (1) ego info normalization
+        norm_obs[0] = ego_obs_list[2] / 5000            # 0. ego altitude   (unit: 5km)
+        norm_obs[1] = np.sin(ego_obs_list[3])           # 1. ego_roll_sin
+        norm_obs[2] = np.cos(ego_obs_list[3])           # 2. ego_roll_cos
+        norm_obs[3] = np.sin(ego_obs_list[4])           # 3. ego_pitch_sin
+        norm_obs[4] = np.cos(ego_obs_list[4])           # 4. ego_pitch_cos
+        norm_obs[5] = ego_obs_list[9] / 340             # 5. ego v_body_x   (unit: mh)
+        norm_obs[6] = ego_obs_list[10] / 340            # 6. ego v_body_y   (unit: mh)
+        norm_obs[7] = ego_obs_list[11] / 340            # 7. ego v_body_z   (unit: mh)
+        norm_obs[8] = ego_obs_list[12] / 340            # 8. ego vc   (unit: mh)
+
+        norm_obs[9] = ego_obs_list[16]
+        norm_obs[10] = ego_obs_list[17]
+        norm_obs[11] = ego_obs_list[18]
+
+        norm_obs[12] = ego_obs_list[13] / 10
+        norm_obs[13] = ego_obs_list[14] / 10
+        norm_obs[14] = sim.num_left_missiles
+        norm_obs[15] = ego_obs_list[19] # mach
+
+        offset = 15
+        # (2) relative info w.r.t enm state
+        ego_AO, ego_TA, R, side_flag = get_AO_TA_R(ego_feature, enm_feature, return_side=True)
+        norm_obs[offset + 1] = (enm_obs_list[9] - ego_obs_list[9]) / 340
+        norm_obs[offset + 2] = (enm_obs_list[2] - ego_obs_list[2]) / 1000
+        norm_obs[offset + 3] = ego_AO
+        norm_obs[offset + 4] = ego_TA
+        norm_obs[offset + 5] = R / 10000
+        norm_obs[offset + 6] = side_flag
+        # (3) relative missile info
+        missile_sims = sim.check_all_missile_warning()  #
+        missile_sim = None
+        if missile_sims:
+            missile_sim = min(missile_sims,
+                              key=lambda m: np.linalg.norm(sim.get_position() - m.get_position()))
+        if missile_sim is not None:
+            missile_feature = np.concatenate((missile_sim.get_position(), missile_sim.get_velocity()))
+            ego_AO, ego_TA, R, side_flag = get_AO_TA_R(ego_feature, missile_feature, return_side=True)
+            norm_obs[offset + 7] = (np.linalg.norm(missile_sim.get_velocity()) - ego_obs_list[9]) / 340
+            norm_obs[offset + 8] = (missile_feature[2] - ego_obs_list[2]) / 1000
+            norm_obs[offset + 9] = ego_AO
+            norm_obs[offset + 10] = ego_TA
+            norm_obs[offset + 11] = R / 10000
+            norm_obs[offset + 12] = side_flag
+
+        norm_obs = np.expand_dims(norm_obs, axis=0)
+        return norm_obs
+
+    def get_action(self, sim: AircraftSimulator):
+        obs = self.get_observation(sim)
+        _action, self.rnn_states = self.actor(obs, self.rnn_states)
+        action = _action.squeeze().detach().cpu().numpy().squeeze()
+
+        action = action.astype(np.int32)
+        # generate low-level input_obs
+        raw_obs = obs
+        input_obs = np.zeros(12)
+        # (1) delta altitude/heading/velocity
+        input_obs[0] = self.norm_delta_altitude[action[0]]
+        input_obs[1] = self.norm_delta_heading[action[1]]
+        input_obs[2] = self.norm_delta_velocity[action[2]]
+        # (2) ego info
+        input_obs[3:12] = raw_obs[:9]
+        input_obs = np.expand_dims(input_obs, axis=0)
+        # output low-level action
+        _action, _rnn_states = self.lowlevel_policy(input_obs, self._inner_rnn_states)
+        action = _action.detach().cpu().numpy().squeeze(0)
+        self._inner_rnn_states = _rnn_states.detach().cpu().numpy()
+        # normalize low-level action
+        norm_act = np.zeros(4)
+        norm_act[0] = action[0] / 20 - 1.
+        norm_act[1] = action[1] / 20 - 1.
+        norm_act[2] = action[2] / 20 - 1.
+        norm_act[3] = action[3] / 58 + 0.4
+        return norm_act
+    def reset(self):
+        self.rnn_states = np.zeros((1, 1, 128))
+
+        self._inner_rnn_states = np.zeros((1, 1, 128))

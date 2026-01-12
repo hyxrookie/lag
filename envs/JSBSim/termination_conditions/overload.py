@@ -1,4 +1,6 @@
 import math
+
+from .mylog import event_logger
 from .termination_condition_base import BaseTerminationCondition
 from ..core.catalog import Catalog as c
 

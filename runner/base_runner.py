@@ -110,9 +110,10 @@ class Runner(object):
         torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_latest.pt")
 
     def restore(self):
-        policy_actor_state_dict = torch.load(str(self.model_dir) + '/actor_latest.pt')
+        logging.info("load_model:{}".format(self.model_dir))
+        policy_actor_state_dict = torch.load(str(self.model_dir) + '/actor_latest.pt', map_location=torch.device('cpu'))
         self.policy.actor.load_state_dict(policy_actor_state_dict)
-        policy_critic_state_dict = torch.load(str(self.model_dir) + '/critic_latest.pt')
+        policy_critic_state_dict = torch.load(str(self.model_dir) + '/critic_latest.pt', map_location=torch.device('cpu'))
         self.policy.critic.load_state_dict(policy_critic_state_dict)
 
     def log_info(self, infos, total_num_steps):

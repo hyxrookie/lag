@@ -1,3 +1,4 @@
+from .mylog import event_logger
 from .termination_condition_base import BaseTerminationCondition
 from ..core.catalog import Catalog as c
 
@@ -26,6 +27,5 @@ class ExtremeState(BaseTerminationCondition):
         done = bool(env.agents[agent_id].get_property_value(c.detect_extreme_state))
         if done:
             env.agents[agent_id].crash()
-            self.log(f'{agent_id} is on an extreme state! Total Steps={env.current_step}')
         success = False
         return done, success, info

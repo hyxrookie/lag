@@ -9,6 +9,7 @@ from enum import Enum, auto
 
 # 引入 JSBSim 和项目内部工具
 import jsbsim
+
 from .catalog import Property, Catalog
 from ..utils.utils import get_root_dir, LLA2NEU, NEU2LLA
 
@@ -70,7 +71,7 @@ MISSILE_DB = {
         name="AIM-120B",
         mass_0=156.0,  # [图片数据]
         mass_loss_rate=8.5,  # [估算]
-        thrust_duration=6.0,  # [图片数据]
+        thrust_duration=5.5,  # [图片数据]
         isp=260.0,
         diameter=0.18,
         length=3.66,
@@ -85,6 +86,40 @@ MISSILE_DB = {
         notch_threshold=50.0,  # 多普勒缺口: 相对速度小于15m/s丢失
         guidance_delay=1.0,  # 发射后延迟1秒才制导
         radar_range=40000.0  #  40km
+    ),
+    "AIM-120B_Easy": MissileConfig(
+        name="AIM-120B_Easy",
+        mass_0=156.0,
+
+        # === 关键修改 1: 动力模式改为“细水长流” ===
+        # 原来是 8.5kg/s 喷 6秒 (爆发型)
+        # 现在改为 2.5kg/s 喷 20秒 (巡航型)
+        # 这样总冲量(Total Impulse)差不多，能飞到40km，但加速度和极速大大降低
+        mass_loss_rate=2.5,
+        thrust_duration=10.0,
+
+        isp=260.0,
+        diameter=0.18,
+        length=3.66,
+        drag_coeff=0.20,  # 稍微降低一点阻力系数，保证它飞得慢也能飘到40km
+
+        # === 关键修改 2: 砍掉机动性 ===
+        # 50G -> 15G
+        # 你的飞机能拉9G。面对15G的导弹，只要稍微做一个Drag或者Notch，
+        # 导弹就很难跟上，AI会立刻发现“只要我机动，它就打不中”。
+        max_g=15.0,
+
+        # === 关键修改 3: 视场角限制 ===
+        # 限制导弹视野，鼓励AI做大角度机动甩掉它
+        seeker_fov=35.0,
+
+        nav_gain=3.0,  # 稍微降低导引增益，让导弹反应迟钝一点
+        explosion_radius=15.0,
+        max_life_time=90.0,  # 增加存活时间，保证低速也能飘到40km外
+
+        notch_threshold=50.0,
+        guidance_delay=1.0,
+        radar_range=40000.0
     )
 }
 
@@ -205,7 +240,7 @@ class FireControlRadar:
     功能：只有被此雷达锁定的目标，才能作为导弹的攻击对象。
     """
 
-    def __init__(self, max_range: float = 85000.0, scan_angle: float = 60.0, max_targets: int = 4):
+    def __init__(self, max_range: float = 85000.0, scan_angle: float = 35.0, max_targets: int = 4):
         """
         :param max_range: 最大锁定距离 (m)
         :param scan_angle: 扫描半角 (度), +/- 60度是典型值
@@ -235,9 +270,12 @@ class FireControlRadar:
         owner_dir = self._get_forward_vector(owner.get_rpy())
 
         for aircraft in all_aircrafts:
-            if aircraft.uid == owner.uid: continue
-            if aircraft.color == owner.color: continue
-            if not getattr(aircraft, 'is_alive', True): continue
+            if aircraft.uid == owner.uid:
+                continue
+            if aircraft.color == owner.color:
+                continue
+            if not getattr(aircraft, 'is_alive', True):
+                continue
 
             # 1. 计算相对位置向量
             dist_vec = aircraft.get_position() - owner_pos
@@ -290,7 +328,9 @@ class AircraftSimulator(BaseSimulator):
         # 1. 全向雷达：100km 范围，用于感知态势
         self.omni_radar = OmniRadar(detection_range=100000.0)
         # 2. 火控雷达：85km 范围，+/-60度视场，用于武器锁定
-        self.fcr = FireControlRadar(max_range=85000.0, scan_angle=60.0, max_targets=4)
+        self.fcr = FireControlRadar(max_range=40000.0, scan_angle=35.0, max_targets=4)
+        # 3. 发射导弹逻辑
+        self.launch = MissileFireControl(self.uid, self.color)
 
         # === [修改位置 1] 新增告警标志属性 ===
         self.is_missile_locked = False      # 【致命】被导弹死死咬住 (RWR 急促报警)
@@ -352,7 +392,6 @@ class AircraftSimulator(BaseSimulator):
         if new_state is not None: self.init_state = new_state
         if new_origin is not None: self.lon0, self.lat0, self.alt0 = new_origin
         for key, value in self.init_state.items():
-            print("key:{}:value:{}".format(key, value))
             self.set_property_value(Catalog[key], value)
 
         success = self.jsbsim_exec.run_ic()
@@ -364,7 +403,6 @@ class AircraftSimulator(BaseSimulator):
         for j in range(propulsion.get_num_engines()):
             propulsion.get_engine(j).init_running()
         propulsion.get_steady_state()
-        print(self.get_property_value(Catalog.position_h_sl_m))
 
         self._update_properties()
 
@@ -484,24 +522,21 @@ class AircraftSimulator(BaseSimulator):
             raise ValueError(f"Unknown prop: {prop}")
 
     def check_missile_warning(self):
+        for missile in self.under_missiles:
+            if missile.is_alive:
+                return missile
+        return None
+    def check_all_missile_warning(self):
         """
         RWR (雷达告警) 逻辑
         返回一个字典，告诉飞行员当前的威胁状态
         """
-        warning_status = {
-            'LOCKED': [],  # 致命威胁：导弹正在跟踪 (滴滴滴急促音)
-            'SEARCHING': []  # 潜在威胁：导弹已发射但暂时丢失目标 (断续音/静默)
-        }
+        warning_status = []
 
         for missile in self.under_missiles:
             if not missile.is_alive:
                 continue
-
-            # 调用刚才在 MissileSimulator 里加的属性
-            if missile.is_locking:
-                warning_status['LOCKED'].append(missile)
-            else:
-                warning_status['SEARCHING'].append(missile)
+            warning_status.append(missile)
 
         return warning_status
 
@@ -740,7 +775,6 @@ class MissileSimulator(BaseSimulator):
 
         #
         is_look_down = pos_t[2] < pos_m[2]
-        print("导弹高度：{},目标高度:{}".format(pos_m[2], pos_t[2]))
 
         # 4. 综合判定 Notch
         # 只有在“下视”且“目标侧向飞行”时，多普勒雷达才会跟丢
@@ -1054,3 +1088,133 @@ class MissileSimulator(BaseSimulator):
 
     def close(self):
         self.target_aircraft = None
+
+
+class MissileFireControl:
+    def __init__(self, agent_id, agent_color):
+        self.agent_id = agent_id
+        self.agent_color = agent_color
+
+        # --- 战术参数配置 ---
+        self.nez_range = 25000.0  # 不可逃逸区 (m)
+        self.max_range_base = 40000.0  # 基础最大射程 (m)
+        self.min_safe_range = 1000.0  # 最小安全距离 (m)
+
+        self.global_launch_interval = 50  # 本机发射冷却 (step)：硬件限制
+        self.target_impact_interval = 100  # 对同一目标攻击间隔 (step)：战术限制
+        self.max_missiles_per_target = 2  # 对同一目标最大同时攻击数
+
+        # --- 内部状态 ---
+        self.last_launch_time = -999.0  # 记录本机上一次发射的绝对时间
+
+    def execute(self, env, agent):
+        """
+        执行火控逻辑：探测、筛选、决策、发射
+        :param env: 仿真环境对象 (用于获取时间、添加导弹)
+        :param agent: 载机对象 (AircraftSimulator)
+        :return: bool (本帧是否发射了导弹)
+        """
+        current_time = env.current_step  # 获取当前仿真时间(step)
+
+        # 1. 基础自检：弹药与本机冷却
+        if agent.num_left_missiles <= 0:
+            return False
+
+        if (current_time - self.last_launch_time) < self.global_launch_interval:
+            return False
+
+        # 2. 获取雷达锁定目标 (利用 FCR 类的筛选逻辑)
+        # 假设 agent.fcr.scan 返回的是已在视场内并排序好的目标列表
+        locked_targets = agent.fcr.scan(agent, agent.enemies)
+
+        if not locked_targets:
+            return False
+
+        # 3. 遍历目标进行决策
+        for target in locked_targets:
+            dist = np.linalg.norm(target.get_position() - agent.get_position())
+
+            # --- 安全距离检查 ---
+            if dist < self.min_safe_range:
+                continue
+
+            # --- 协同逻辑核心：检查目标当前的受攻击状态 ---
+            team_missiles = self._get_team_missiles_on_target(target)
+
+            # A. 饱和度检查 (友军A和C加起来不能超过2枚)
+            if len(team_missiles) >= self.max_missiles_per_target:
+                continue
+
+                # B. 攻击间隔检查 (找到最新的一枚导弹，看它飞了多久)
+            # 如果最新的一枚导弹飞行时间 (m._t) 小于 设定间隔，说明刚有人打过
+            # 注意：missile._t 是导弹存活时间。若 m._t < 5.0，说明 5秒内有人开火了
+            if len(team_missiles) > 0:
+                youngest_missile = min(team_missiles, key=lambda m: m._t)
+                if youngest_missile._t / 12 < self.target_impact_interval:
+                    continue
+
+                    # --- 射程决策 (DLZ) ---
+            should_fire = self._check_launch_conditions(dist, agent.num_left_missiles)
+
+            if should_fire:
+                self._launch_missile(env, agent, target, current_time)
+                return True  # 一次 step 只发射一枚
+
+        return False
+
+    def _get_team_missiles_on_target(self, target):
+        """
+        获取当前正在攻击该目标、且属于我方阵营的存活导弹列表
+        用于实现多机协同计数
+        """
+        active_missiles = []
+        # target.under_missiles 包含了所有正在攻击该目标的导弹(可能是死导弹，可能是敌人的)
+        for m in target.under_missiles:
+            if not m.is_alive:
+                continue
+            # 颜色相同才算协同 (Red 配合 Red, 不管 Blue)
+            if m.color == self.agent_color:
+                active_missiles.append(m)
+        return active_missiles
+
+    def _check_launch_conditions(self, dist, ammo_left):
+        """根据距离和剩余弹药判断是否开火"""
+        # 1. NEZ 必杀区：无视弹药限制，强制开火
+        if dist <= self.nez_range:
+            return True
+
+        # 2. 动态射程逻辑
+        # 只有在射程内才讨论弹药
+        if dist > self.max_range_base:
+            return False
+
+        allowed_range = 0.0
+        if ammo_left >= 4:
+            allowed_range = 40000.0
+        elif ammo_left == 3:
+            allowed_range = 35000.0
+        elif ammo_left == 2:
+            allowed_range = 30000.0
+        else:
+            # 剩1枚时，只在 NEZ 开火 (也就是 allowed_range=0，会被上面 NEZ 逻辑覆盖)
+            allowed_range = 0.0
+
+        return dist <= allowed_range
+
+    def _launch_missile(self, env, agent, target, time):
+        """执行发射操作"""
+        # 生成唯一 UID
+        # 格式：AgentID_剩余弹药数_发射时间步
+        new_uid = f"{agent.uid}{agent.num_left_missiles}"
+
+        # 创建导弹 (使用 Simulator 的工厂方法)
+        missile = MissileSimulator.create(parent=agent, target=target, uid=new_uid, missile_model='AIM-120B')
+
+        # 加入环境
+        env.add_temp_simulator(missile)
+
+        # 扣除弹药
+        agent.num_left_missiles -= 1
+
+        # 更新本机冷却时间
+        self.last_launch_time = time

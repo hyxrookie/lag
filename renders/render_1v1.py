@@ -1,3 +1,6 @@
+import os
+from datetime import datetime
+
 import numpy as np
 import torch
 from envs.JSBSim.envs import SingleCombatEnv, SingleControlEnv, MultipleCombatEnv
@@ -19,20 +22,28 @@ class Args:
         self.recurrent_hidden_layers = 1
         self.tpdv = dict(dtype=torch.float32, device=torch.device('cpu'))
         self.use_prior = True
-    
+
 def _t2n(x):
     return x.detach().cpu().numpy()
 
+def make_output_path(experiment_name: str, suffix: str = ".txt.acmi") -> str:
+    base_dir = os.path.dirname(os.path.abspath(__file__))      # 当前python文件目录
+    date_str = datetime.now().strftime("%Y%m%d") +'1v1'             # 日期文件夹
+    time_str = datetime.now().strftime("%H%M%S")                # 秒级时间戳
+    date_dir = os.path.join(base_dir, date_str)
+    os.makedirs(date_dir, exist_ok=True)
+    filename = f"{experiment_name}_{time_str}{suffix}"
+    return os.path.join(date_dir, filename)
 num_agents = 2
 render = True
-ego_policy_index = 1040
-enm_policy_index = 0
+ego_policy_index = 900
+enm_policy_index = 600
 episode_rewards = 0
-ego_run_dir = "/home/lqh/jyh/CloseAirCombat/scripts/results/SingleCombat/1v1/NoWeapon/HierarchySelfplay/ppo/artillery_check/wandb/latest-run/files"
-enm_run_dir = "/home/lqh/jyh/CloseAirCombat/scripts/results/SingleCombat/1v1/NoWeapon/HierarchySelfplay/ppo/artillery_check/wandb/latest-run/files"
+ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lagbvr4/scripts/results/SingleCombat/1v1/ShootMissile/HierarchySelfplay/ppo/v1/run13/"
+enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lagbvr4/scripts/results/SingleCombat/1v1/ShootMissile/HierarchySelfplay/ppo/v1/run13/"
 experiment_name = ego_run_dir.split('/')[-4]
-
-env = SingleCombatEnv("1v1/NoWeapon/Selfplay")
+experiment_name = make_output_path(experiment_name, suffix=".txt.acmi")
+env = SingleCombatEnv("1v1/ShootMissile/HierarchySelfplay")
 env.seed(0)
 args = Args()
 

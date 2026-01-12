@@ -3,6 +3,15 @@ from gymnasium import spaces
 from typing import Tuple
 import torch
 
+from ..reward_functions.my_reward.BVRAttackGeometryReward import BVRAttackGeometryReward
+from ..reward_functions.my_reward.BVRCruiseStateReward import BVRCruiseStateReward
+from ..reward_functions.my_reward.BVREvasionReward import BVREvasionReward
+from ..reward_functions.my_reward.BVRRelativeAltitudeReward import BVRRelativeAltitudeReward
+from ..reward_functions.my_reward.BVRRelativeSpeedReward import BVRRelativeSpeedReward
+from ..reward_functions.my_reward.BVRSpeedAltitudeEnergyReward import BVRSpeedAltitudeEnergyReward
+from ..reward_functions.my_reward.BVRUnifiedAltitudeReward import BVRUnifiedAltitudeReward
+from ..reward_functions.my_reward.BVRUnifiedVelocityReward import BVRUnifiedVelocityReward
+from ..reward_functions.my_reward.BVRZoneRangeReward import BVRZoneRangeReward
 from ..tasks import SingleCombatTask
 from ..core.catalog import Catalog as c
 from ..core.simulatior import MissileSimulator
@@ -52,6 +61,10 @@ class MultipleCombatTask(SingleCombatTask):
             c.accelerations_n_pilot_x_norm,     # 13. a_north   (unit: G)
             c.accelerations_n_pilot_y_norm,     # 14. a_east    (unit: G)
             c.accelerations_n_pilot_z_norm,     # 15. a_down    (unit: G)
+            c.velocities_p_rad_sec,  # 16. p (roll rate)  (unit: rad/s)
+            c.velocities_q_rad_sec,  # 17. q (pitch rate) (unit: rad/s)
+            c.velocities_r_rad_sec,  # 18. r (yaw rate)   (unit: rad/s)
+            c.velocities_mach       # 19 mach
         ]
         self.action_var = [
             c.fcs_aileron_cmd_norm,             # [-1., 1.]
@@ -124,8 +137,8 @@ class HierarchicalMultipleCombatTask(MultipleCombatTask):
     
     def __init__(self, config: str):
         super().__init__(config)
-        self.lowlevel_policy = BaselineActor()
-        self.lowlevel_policy.load_state_dict(torch.load(get_root_dir() + '/model/baseline_model.pt', map_location=torch.device('cpu')))
+        self.lowlevel_policy = BaselineActor(15, True)
+        self.lowlevel_policy.load_state_dict(torch.load(get_root_dir() + '/model/actor_latest.pt', map_location=torch.device('cpu')))
         self.lowlevel_policy.eval()
         self.norm_delta_altitude = np.array([0.1, 0, -0.1])
         self.norm_delta_heading = np.array([-np.pi / 6, -np.pi / 12, 0, np.pi / 12, np.pi / 6])
@@ -174,14 +187,16 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         self.max_attack_distance = getattr(self.config, 'max_attack_distance', np.inf)
         self.min_attack_interval = getattr(self.config, 'min_attack_interval', 125)
         self.reward_functions = [
-            PostureReward(self.config),
-            MissilePostureReward(self.config),
+            BVRAttackGeometryReward(self.config),
+            BVREvasionReward(self.config),
+            BVRSpeedAltitudeEnergyReward(self.config),
+            BVRZoneRangeReward(self.config),
             AltitudeReward(self.config),
             EventDrivenReward(self.config)
         ]
     
     def load_observation_space(self):
-        self.obs_length = 9 + self.num_agents  * 6
+        self.obs_length = 16 + self.num_agents * 6
         self.observation_space = spaces.Box(low=-10, high=10., shape=(self.obs_length,))
         self.share_observation_space = spaces.Box(low=-10, high=10., shape=(self.num_agents * self.obs_length,))
     
@@ -192,6 +207,7 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
     def get_obs(self, env, agent_id):
         norm_obs = np.zeros(self.obs_length)
         # (1) ego info normalization
+        agent = env.agents[agent_id]
         ego_state = np.array(env.agents[agent_id].get_property_values(self.state_var))
         ego_cur_ned = LLA2NEU(*ego_state[:3], env.center_lon, env.center_lat, env.center_alt)
         ego_feature = np.array([*ego_cur_ned, *(ego_state[6:9])])
@@ -204,8 +220,18 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         norm_obs[6] = ego_state[10] / 340            # 6. ego v_body_y   (unit: mh)
         norm_obs[7] = ego_state[11] / 340            # 7. ego v_body_z   (unit: mh)
         norm_obs[8] = ego_state[12] / 340            # 8. ego vc   (unit: mh)(unit: 5G)
+        #新增
+        norm_obs[9] = ego_state[16]
+        norm_obs[10] = ego_state[17]
+        norm_obs[11] = ego_state[18]
+
+        norm_obs[12] = ego_state[13] / 10
+        norm_obs[13] = ego_state[14] / 10
+        norm_obs[14] = agent.num_left_missiles
+        norm_obs[15] = ego_state[19] # mach
+
         # (2) relative inof w.r.t partner+enemies state
-        offset = 8
+        offset = 15
         for sim in env.agents[agent_id].partners + env.agents[agent_id].enemies:
             state = np.array(sim.get_property_values(self.state_var))
             cur_ned = LLA2NEU(*state[:3], env.center_lon, env.center_lat, env.center_alt)
@@ -220,7 +246,10 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             offset += 6
         norm_obs = np.clip(norm_obs, self.observation_space.low, self.observation_space.high)
         # (3) missile info TODO: multiple missile and parnter's missile?
-        missile_sim = env.agents[agent_id].check_missile_warning() #
+        missile_sims = env.agents[agent_id].check_all_missile_warning() #
+        missile_sim = None
+        if missile_sims:
+            missile_sim = min(missile_sims, key=lambda m: np.linalg.norm(env.agents[agent_id].get_position() - m.get_position()))
         if missile_sim is not None:
             missile_feature = np.concatenate((missile_sim.get_position(), missile_sim.get_velocity()))
             ego_AO, ego_TA, R, side_flag = get_AO_TA_R(ego_feature, missile_feature, return_side=True)
@@ -242,37 +271,43 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
 
     def normalize_action(self, env, agent_id, action):
         self._shoot_action[agent_id] = action[3] > 0
-        return super().normalize_action(env, agent_id, action[:3])
+
+        """Convert high-level action into low-level action.
+        """
+        # generate low-level input_obs
+        raw_obs = self.get_obs(env, agent_id)
+        input_obs = np.zeros(15)
+        # (1) delta altitude/heading/velocity
+        input_obs[0] = self.norm_delta_altitude[action[0]]
+        input_obs[1] = self.norm_delta_heading[action[1]]
+        input_obs[2] = self.norm_delta_velocity[action[2]]
+        # (2) ego info
+        input_obs[3:15] = raw_obs[:12]
+        input_obs = np.expand_dims(input_obs, axis=0)
+        # output low-level action
+        _action, _rnn_states = self.lowlevel_policy(input_obs, self._inner_rnn_states[agent_id])
+        action = _action.detach().cpu().numpy().squeeze(0)
+        self._inner_rnn_states[agent_id] = _rnn_states.detach().cpu().numpy()
+        # normalize low-level action
+        norm_act = np.zeros(4)
+        norm_act[0] = action[0] / 20 - 1.
+        norm_act[1] = action[1] / 20 - 1.
+        norm_act[2] = action[2] / 20 - 1.
+        norm_act[3] = action[3] / 58 + 0.4
+        return norm_act
 
     def step(self, env):
         SingleCombatTask.step(self, env)
+        # 遍历所有智能体
         for agent_id, agent in env.agents.items():
-            # [RL-based missile launch with limited condition] Determine whether can launch missile at the nearest
-            # enemy aircraft, the aircraft and enemy aircraft must alive
             if not agent.is_alive:
                 continue
-            alive_enemies = list(filter(lambda x: x.is_alive, agent.enemies))
 
-            if not alive_enemies:
-                continue
-            target_list = [x.get_position() - agent.get_position() for x in alive_enemies]
+            # 只需要这一行！
+            # 所有的判断逻辑（最近敌人、角度、间隔、协同）都在 fcs.execute 内部完成了
+            # 传入 env 是为了让 fcs 能获取时间并添加导弹实体
 
-            target_distance = list(map(np.linalg.norm, target_list))
-            target_index = np.argmin(target_distance)
-            target = target_list[target_index]
-            heading = agent.get_velocity()
-            distance = target_distance[target_index]
-            attack_angle = np.rad2deg(np.arccos(np.clip(np.sum(target * heading) / (distance * np.linalg.norm(heading) + 1e-8), -1, 1)))
-            shoot_interval = env.current_step - self._last_shoot_time[agent_id]
-
-            agent_v = np.linalg.norm(agent.get_velocity())
-
-            shoot_flag = agent.is_alive and self._shoot_action[agent_id] and self._remaining_missiles[agent_id] > 0 \
-                and attack_angle <= self.max_attack_angle and distance <= self.max_attack_distance and shoot_interval >= self.min_attack_interval\
-                and agent_v > 150
-            if shoot_flag:
-                new_missile_uid = agent_id + str(self._remaining_missiles[agent_id])
-                env.add_temp_simulator(
-                    MissileSimulator.create(parent=agent, target=alive_enemies[target_index], uid=new_missile_uid))
-                self._remaining_missiles[agent_id] -= 1
-                self._last_shoot_time[agent_id] = env.current_step
+            # 假设我们通过某种方式(如RL动作)开启了射击许可，或者全自动火控
+            # 这里假设只要符合条件就自动发射(Auto Fire)
+            if self._shoot_action.get(agent_id, True):  # 如果RL输出了开火指令
+                agent.launch.execute(env, agent)

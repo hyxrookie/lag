@@ -47,7 +47,6 @@ class JSBSimRunner(Runner):
             for step in range(self.buffer_size):
                 # Sample actions
                 values, actions, action_log_probs, rnn_states_actor, rnn_states_critic = self.collect(step)
-
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions)
 
@@ -227,3 +226,4 @@ class JSBSimRunner(Runner):
         torch.save(policy_actor_state_dict, str(self.save_dir) + '/actor_latest.pt')
         policy_critic_state_dict = self.policy.critic.state_dict()
         torch.save(policy_critic_state_dict, str(self.save_dir) + '/critic_latest.pt')
+        torch.save(policy_actor_state_dict, str(self.save_dir) + f'/actor_{episode}.pt')
