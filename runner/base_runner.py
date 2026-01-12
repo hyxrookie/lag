@@ -109,7 +109,7 @@ class Runner(object):
         torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_latest.pt")
 
     def restore(self):
-        print("Saving model..." + self.model_dir)
+        print("loading model..." + self.model_dir)
         policy_actor_state_dict = torch.load(str(self.model_dir) + '/actor_latest.pt')
         self.policy.actor.load_state_dict(policy_actor_state_dict)
         policy_critic_state_dict = torch.load(str(self.model_dir) + '/critic_latest.pt')

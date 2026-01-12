@@ -29,11 +29,17 @@ def _t2n(x):
 
 num_agents = 4
 render = True
-ego_policy_index = 240
-enm_policy_index = 907
+ego_policy_index = 310
+enm_policy_index = 280
 episode_rewards = 0
-ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250508_080520-54h9aorx/files"
-enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250508_080520-54h9aorx/files"
+# ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250526_081911-c938fmxg/files"
+# enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250516_141634-zr91zk4z/files"
+# ego_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250522_233432-zscgxwbu/files"
+# enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250522_233432-zscgxwbu/files"
+# f'D:\MyProject\lag\scripts\result\MultipleCombat\2v2\ShootMissile\MyHierarchySelfplay\mappo\v1\wandb\run-20250520_225206-cq9zk262\files'
+ego_run_dir = "/mnt/d/MyProject/lag/scripts/result/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250520_225206-cq9zk262/files"
+enm_run_dir = "/mnt/d/MyProject/lag/scripts/result/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250520_225206-cq9zk262/files"
+# enm_run_dir = "/mnt/d/MyProject/LAG/scripts/results/MultipleCombat/2v2/shootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250526_081911-c938fmxg/files"
 experiment_name = ego_run_dir.split('/')[-4]
 
 env = MultipleCombatEnv("2v2/ShootMissile/MyHierarchySelfplay")

@@ -15,3 +15,4 @@ CUDA_VISIBLE_DEVICES=0 python train/train_jsbsim.py \
     --lr 3e-4 --gamma 0.99 --ppo-epoch 4 --clip-params 0.2 --max-grad-norm 2 --entropy-coef 1e-3 \
     --hidden-size "128 128" --act-hidden-size "128 128" --recurrent-hidden-size 128 --recurrent-hidden-layers 1 --data-chunk-length 8 \
     --user-name "jyh" --use-wandb --wandb-name "thu_jsbsim" \
+    --model-dir "/mnt/d/MyProject/lag/scripts/results/MultipleCombat/2v2/ShootMissile/MyHierarchySelfplay/mappo/v1/wandb/run-20250522_233432-zscgxwbu/files"

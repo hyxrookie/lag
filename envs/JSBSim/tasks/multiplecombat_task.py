@@ -276,10 +276,13 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         SingleCombatTask.step(self, env)
         for agent_id, agent in env.agents.items():
             # [RL-based missile launch with limited condition]
-            # Determine whether can launch missile at the nearest enemy aircraft
+            # Determine whether can launch missile at the nearest enemy aircraft, the aircraft must alive
+            if not agent.is_alive:
+                continue
             alive_enemies = list(filter(lambda x: x.is_alive, agent.enemies))
-            if len(alive_enemies) == 0:
-                return
+
+            if not alive_enemies:
+                continue
             target_list = [x.get_position() - agent.get_position() for x in alive_enemies]
             target_distance = list(map(np.linalg.norm, target_list))
             target_index = np.argmin(target_distance)
