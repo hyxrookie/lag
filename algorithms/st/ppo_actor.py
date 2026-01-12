@@ -26,7 +26,7 @@ class PPOActorST(nn.Module):
         self.num_spatial_heads = getattr(args, 'num_spatial_heads', 8)
         self.num_temporal_heads = getattr(args, 'num_temporal_heads', 8)
         self.temporal_ff_dim = getattr(args, 'temporal_ff_dim', 512)
-        self.num_temporal_layers = getattr(args, 'num_temporal_layers', 1)
+        self.num_temporal_layers = getattr(args, 'num_temporal_layers', 2)
         self.memory_length = getattr(args, 'memory_length', 64)
 
         self.dropout = getattr(args, 'dropout', 0.1)
