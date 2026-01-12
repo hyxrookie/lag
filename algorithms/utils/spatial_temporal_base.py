@@ -32,7 +32,7 @@ class SpatialTemporalBase(nn.Module):
                  
                  # 时间参数 (GTrXL)
                  num_temporal_heads=4, 
-                 num_temporal_layers=2, 
+                 num_temporal_layers=1,
                  memory_length=32,
                  
                  # 通用参数
@@ -152,25 +152,33 @@ class SpatialTemporalBase(nn.Module):
         # 【关键修改点 1】：拆包 (Flattened -> Matrix)
         # ============================================================
         # rnn_states 原始维度: [Layers, B, Mem_Len * Embed_Dim]
-        n_layers, batch_size, flat_dim = rnn_states.shape
+        batch_size, n_layers, flat_dim = rnn_states.shape
 
-        # 强制 Reshape 成 GTrXL 需要的 [Layers, B, Mem_Len, Hidden]
-        # 注意：这里假设 rnn_states 最后一维的大小足以容纳 memory_length * embed_dim
-        rnn_states_view = rnn_states.view(n_layers, batch_size, self.memory_length, self.embed_dim)
+        # 1. Reshape 恢复 Memory 维度
+        # [Batch, Layers, Flat_Dim] -> [Batch, Layers, Mem_Len, Hidden]
+        rnn_states_view = rnn_states.view(batch_size, n_layers, self.memory_length, self.embed_dim)
 
+        # 2. Permute 置换维度以适应 GTrXL 内部逻辑
+        # GTrXL 的 forward 通常期待 hxs 为 [Layers, Batch, Mem_Len, Hidden]
+        # 这样 forward 里的 `layer_mem = hxs[i]` 才能正确取到第 i 层的 memory
+        rnn_states_view = rnn_states_view.permute(1, 0, 2, 3)
+
+        # ------------------------------------------------------------
         # 4. 时间注意力 (GTrXL)
-        # 传入拆包后的 memory
-        # 4. 时间注意力 (GTrXL)
-        # Input: [N, embed_dim]
-        # rnn_states: [Layers, B, Mem, Hidden]
-        # Output: [N, hidden_size]
+        # ------------------------------------------------------------
+        # Input x_spatial: [N, embed_dim]
+        # Input rnn_states: [Layers, Batch, Mem, Hidden] (经过 permute)
+        # Output new_rnn_states: [Layers, Batch, Mem, Hidden] (通常 stack 也是层优先)
         features, new_rnn_states = self.temporal_attn(x_spatial, rnn_states_view, masks)
 
         # ============================================================
-        # 【关键修改点 2】：打包 (Matrix -> Flattened)
+        # 【关键修改点 2】：输出还原 (Layers First -> Batch First)
         # ============================================================
-        # new_rnn_states 出来是: [Layers, B, Mem_Len, Embed_Dim]
-        # 我们要把它压扁返回给 Buffer
+        # new_rnn_states 目前是: [Layers, Batch, Mem_Len, Embed_Dim]
+
+        # 1. Permute 回来：变回 [Batch, Layers, Mem_Len, Embed_Dim]
+        new_rnn_states = new_rnn_states.permute(1, 0, 2, 3)
+        # 2. Flatten 压扁：变回 [Batch, Layers, Flat_Dim] 存入 Buffer
         new_rnn_states_flat = new_rnn_states.flatten(2, 3)
 
         return features, new_rnn_states_flat
