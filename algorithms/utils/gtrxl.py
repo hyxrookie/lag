@@ -147,7 +147,6 @@ class GTrXL(nn.Module):
         # 输入维度对齐
         self.input_proj = nn.Linear(input_size, hidden_size) if input_size != hidden_size else nn.Identity()
         self.pos_encoder = PositionalEncoding(hidden_size)
-
         self.blocks = nn.ModuleList([
             GTrXLBlock(hidden_size, num_heads, hidden_size * 4, dropout=0.0)
             for _ in range(num_layers)

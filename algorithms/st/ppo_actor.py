@@ -32,8 +32,8 @@ class PPOActorST(nn.Module):
         self.dropout = getattr(args, 'dropout', 0.1)
         self.ego_dim = getattr(args, 'ego_dim', 9)
         self.relative_dim = getattr(args, 'relative_dim', 6)
-        self.num_friendly = getattr(args, 'num_friendly', 3)
-        self.num_enemy = getattr(args, 'num_enemy', 4)
+        self.num_friendly = getattr(args, 'num_friendly', 1)
+        self.num_enemy = getattr(args, 'num_enemy', 2)
         self.num_missiles = getattr(args, 'num_missiles', 1)
         self.use_type_embedding = getattr(args, 'use_type_embedding', True)
 

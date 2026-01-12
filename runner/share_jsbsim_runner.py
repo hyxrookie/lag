@@ -350,6 +350,7 @@ class ShareJSBSimRunner(Runner):
         logging.info("render episode reward of agent: " + str(render_infos['render_episode_reward']))
 
     def save(self, episode):
+        print("save_model:{}".format(self.save_dir))
         policy_actor_state_dict = self.policy.actor.state_dict()
         torch.save(policy_actor_state_dict, str(self.save_dir) + '/actor_latest.pt')
         policy_critic_state_dict = self.policy.critic.state_dict()
