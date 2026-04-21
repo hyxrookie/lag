@@ -26,15 +26,15 @@ class Args:
 def _t2n(x):
     return x.detach().cpu().numpy()
 
-scenario_name = "4v4/ShootMissile/HierarchySelfplay"
+scenario_name = "2v2/ShootMissile/MyHierarchySelfplay"
 config = parse_config(scenario_name)
 num_agents = len(config.aircraft_configs)
 render = True
-ego_policy_index = 0
-enm_policy_index = 0
+ego_policy_index = 420
+enm_policy_index = 200
 episode_rewards = 0
-ego_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
-enm_run_dir = "/mnt/c/Users/hyx/PycharmProjects/lag_multi/scripts/results/MultipleCombat/4v4/ShootMissile/HierarchySelfplay/mappo/v1/run13/"
+ego_run_dir = "/mnt/d/MyProject/lag/scripts/results/MultipleCombat/2v2//ShootMissile/MyHierarchySelfplay/mappo/v1/run6/"
+enm_run_dir = "/mnt/d/MyProject/lag/scripts/results/MultipleCombat/2v2/ShootMissile/MyHierarchySelfplay/mappo/v1/run6/"
 experiment_name = ego_run_dir.split('/')[-4]
 env = MultipleCombatEnv(scenario_name)
 env.seed(0)

@@ -5,6 +5,10 @@ from gymnasium import spaces
 from typing import Tuple
 import torch
 
+from ..reward_functions.myreward.BVRAttackGeometryReward import BVRAttackGeometryReward
+from ..reward_functions.myreward.BVREvasionReward_315_Improved2 import BVREvasionReward_315_Improved2
+from ..reward_functions.myreward.BVRSpeedAltitudeEnergyReward_312 import BVRSpeedAltitudeEnergyReward_312
+from ..reward_functions.myreward.BVRZoneRangeReward import BVRZoneRangeReward
 from ..tasks import SingleCombatTask
 from ..core.catalog import Catalog as c
 from ..core.simulatior import MissileSimulator
@@ -57,6 +61,10 @@ class MultipleCombatTask(SingleCombatTask):
             c.accelerations_n_pilot_x_norm,     # 13. a_north   (unit: G)
             c.accelerations_n_pilot_y_norm,     # 14. a_east    (unit: G)
             c.accelerations_n_pilot_z_norm,     # 15. a_down    (unit: G)
+            c.velocities_p_rad_sec,  # 16. p (roll rate)  (unit: rad/s)
+            c.velocities_q_rad_sec,  # 17. q (pitch rate) (unit: rad/s)
+            c.velocities_r_rad_sec,  # 18. r (yaw rate)   (unit: rad/s)
+            c.velocities_mach  # 19 mach
         ]
         self.action_var = [
             c.fcs_aileron_cmd_norm,             # [-1., 1.]
@@ -162,6 +170,7 @@ class HierarchicalMultipleCombatTask(MultipleCombatTask):
         norm_act[1] = action[1] / 20 - 1.
         norm_act[2] = action[2] / 20 - 1.
         norm_act[3] = action[3] / 58 + 0.4
+        # print("agent_id：{}action0:{},action1:{},action2:{},action3:{},".format(agent_id, norm_act[0], norm_act[1], norm_act[2], norm_act[3]))
         return norm_act
 
     def reset(self, env):
@@ -179,19 +188,23 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         self.max_attack_distance = getattr(self.config, 'max_attack_distance', np.inf)
         self.min_attack_interval = getattr(self.config, 'min_attack_interval', 125)
         self.reward_functions = [
-            AttackWindowReward(self.config),
-            DogdeAttackWindowReward(self.config),
-            ComputeClosenessReward(self.config),
-            FriendlyRangeReward(self.config),
+            # AttackWindowReward(self.config),
+            # DogdeAttackWindowReward(self.config),
+            # ComputeClosenessReward(self.config),
+            # FriendlyRangeReward(self.config),
+            BVRAttackGeometryReward(self.config),
+            BVREvasionReward_315_Improved2(self.config),
+            BVRSpeedAltitudeEnergyReward_312(self.config),
+            BVRZoneRangeReward(self.config),
             EventDrivenReward(self.config),
-            VelocityReward(self.config),
-            MissileDodgeReward(self.config),
-            AltitudeReward(self.config),
+            # VelocityReward(self.config),
+            # MissileDodgeReward(self.config),
+            # AltitudeReward(self.config),
 
         ]
     
     def load_observation_space(self):
-        self.obs_length = 9 + self.num_agents  * 6
+        self.obs_length = 14 + (self.num_agents)  * 7
         self.observation_space = spaces.Box(low=-10, high=10., shape=(self.obs_length,))
         self.share_observation_space = spaces.Box(low=-10, high=10., shape=(self.num_agents * self.obs_length,))
     
@@ -214,8 +227,15 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
         norm_obs[6] = ego_state[10] / 340            # 6. ego v_body_y   (unit: mh)
         norm_obs[7] = ego_state[11] / 340            # 7. ego v_body_z   (unit: mh)
         norm_obs[8] = ego_state[12] / 340            # 8. ego vc   (unit: mh)(unit: 5G)
+
+        norm_obs[9] = ego_state[16]
+        norm_obs[10] = ego_state[17]
+        norm_obs[11] = ego_state[18]
+        norm_obs[12] = ego_state[19] # mach
+
+        norm_obs[13] = 1.0 if env.agents[agent_id].is_alive else 0.0
         # (2) relative inof w.r.t partner+enemies state
-        offset = 8
+        offset = 13
         for sim in env.agents[agent_id].partners + env.agents[agent_id].enemies:
             state = np.array(sim.get_property_values(self.state_var))
             cur_ned = LLA2NEU(*state[:3], env.center_lon, env.center_lat, env.center_alt)
@@ -227,7 +247,8 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             norm_obs[offset+4] = TA
             norm_obs[offset+5] = R / 10000
             norm_obs[offset+6] = side_flag
-            offset += 6
+            norm_obs[offset+7] = 1.0 if sim.is_alive else 0.0
+            offset += 7
         norm_obs = np.clip(norm_obs, self.observation_space.low, self.observation_space.high)
         # (3) missile info TODO: multiple missile and parnter's missile?
         missile_sim = env.agents[agent_id].check_missile_warning() #
@@ -240,6 +261,7 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             norm_obs[offset + 4] = ego_TA
             norm_obs[offset + 5] = R / 10000
             norm_obs[offset + 6] = side_flag
+            norm_obs[offset + 7] = 1.0 if missile_sim.is_alive else 0.0
 
         # missile_sims = env.agents[agent_id].check_all_missile_warning
         # for missile in missile_sims:

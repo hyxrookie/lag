@@ -128,12 +128,13 @@ class SpatialTemporalBase(nn.Module):
         # 2. 实体嵌入
         # Input: [N, obs_dim]
         # Output: [N, num_entities, embed_dim]
+        valid_masks = None
         if self.is_critic:
             x_embed = self.entity_embed(obs)
         else:
-            x_embed = self.entity_embed(
-                obs, 
-                num_friendly=self.num_friendly, 
+            x_embed, valid_masks = self.entity_embed(
+                obs,
+                num_friendly=self.num_friendly,
                 num_enemy=self.num_enemy,
                 num_missiles=self.num_missiles
             )
@@ -141,7 +142,7 @@ class SpatialTemporalBase(nn.Module):
         # 3. 空间注意力
         # Actor Output: [N, embed_dim] (已聚合)
         # Critic Output: [N, num_agents, embed_dim] (需聚合)
-        x_spatial = self.spatial_attn(x_embed)
+        x_spatial = self.spatial_attn(x_embed, valid_masks)
         
         if self.is_critic:
             # Critic 聚合: [N, num_agents, dim] -> [N, dim]

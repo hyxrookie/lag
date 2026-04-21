@@ -4,6 +4,10 @@ from .env_base import BaseEnv
 from ..tasks.multiplecombat_task import HierarchicalMultipleCombatShootTask, HierarchicalMultipleCombatTask, MultipleCombatTask
 import random
 import math
+
+from ..utils.utils import get_AO_TA_R
+
+
 class MultipleCombatEnv(BaseEnv):
     """
     MultipleCombatEnv is an multi-player competitive environment.
@@ -12,6 +16,7 @@ class MultipleCombatEnv(BaseEnv):
         super().__init__(config_name)
         # Env-Specific initialization here!
         self._create_records = False
+        self.episode_metrics = None
 
     @property
     def share_observation_space(self):
@@ -35,11 +40,13 @@ class MultipleCombatEnv(BaseEnv):
             obs (dict): {agent_id: initial observation}
             share_obs (dict): {agent_id: initial state}
         """
+        self._create_records = False
         self.current_step = 0
         self.reset_simulators()
         self.task.reset(self)
         obs = self.get_obs()
         share_obs = self.get_state()
+        self._init_episode_metrics()
         return self._pack(obs), self._pack(share_obs)
 
 
@@ -92,7 +99,7 @@ class MultipleCombatEnv(BaseEnv):
             # 为每个单位生成独立的随机属性
             altitude_m = random.randint(5000, 10000)  # 先用米，方便理解
             heading_deg = random.randint(0, 359)  # 0-359 更常用
-            speed_mps = random.randint(100, 300)  # 先用米/秒
+            speed_mps = random.randint(200, 300)  # 先用米/秒
 
             if sim_id.startswith('A'):  # 红队
                 # 在基准点周围随机偏移 (允许负值)
@@ -120,11 +127,179 @@ class MultipleCombatEnv(BaseEnv):
                 })
 
         self._tempsims.clear()
+    def new_random_reset_simulators(self, min_sep_km: float = 0.5):
+        import math, random
+
+        # --- 内部辅助函数：根据高度和马赫数计算真速 (m/s) ---
+        def get_speed_from_mach(altitude_m, target_mach):
+            # 国际标准大气 (ISA) 常量
+            GAMMA = 1.4  # 空气绝热指数
+            R = 287.05  # 气体常数
+            T0 = 288.15  # 海平面标准温度 (K)
+            L = 0.0065  # 温度随高度递减率 (K/m)
+
+            # 1. 计算该高度的气温 (Kelvin)
+            # 对流层顶 (11000m) 以下使用线性递减，以上暂按恒温处理(简单模型)
+            clamped_alt = min(altitude_m, 11000.0)
+            temperature = T0 - L * clamped_alt
+
+            # 2. 计算音速 a = sqrt(gamma * R * T)
+            speed_of_sound = math.sqrt(GAMMA * R * temperature)
+
+            # 3. 计算真速
+            return target_mach * speed_of_sound
+
+        # --- 常量定义 ---
+        KM_PER_DEG_LAT = 111.132
+        KM_PER_DEG_LON_AT_EQ = 111.320
+        FT_PER_METER = 3.28084
+
+        # --- 基地与范围设置 ---
+        red_base_lon_deg = 120.0
+        red_base_lat_deg = 60.0
+        inner_radius_km = 5.0
+        min_base_separation_km = 50.0  # 30km
+        max_base_separation_km = 100.0  # 50km
+
+        # 红队经度换算系数
+        km_per_deg_lon_red = KM_PER_DEG_LON_AT_EQ * math.cos(math.radians(red_base_lat_deg))
+
+        # 1. 随机生成蓝队基地（相对红队）
+        angle_rad = random.uniform(0, 2 * math.pi)
+        distance_km = random.uniform(min_base_separation_km, max_base_separation_km)
+
+        delta_lat_deg = (distance_km * math.cos(angle_rad)) / KM_PER_DEG_LAT
+        delta_lon_deg = (distance_km * math.sin(angle_rad)) / km_per_deg_lon_red
+
+        blue_base_lat_deg = red_base_lat_deg + delta_lat_deg
+        blue_base_lon_deg = red_base_lon_deg + delta_lon_deg
+
+        # 蓝队经度换算系数
+        km_per_deg_lon_blue = KM_PER_DEG_LON_AT_EQ * math.cos(math.radians(blue_base_lat_deg))
+
+        # --- 计算理想交战航向 ---
+        red_ideal_heading = math.degrees(angle_rad) % 360
+        blue_ideal_heading = (red_ideal_heading + 180) % 360
+
+        # --- 工具函数定义 (位置生成) ---
+        def sample_offset_deg(R_km: float, km_per_deg_lon: float):
+            u = random.random()
+            r = R_km * math.sqrt(u)
+            theta = random.uniform(0.0, 2.0 * math.pi)
+            dlat_km = r * math.cos(theta)
+            dlon_km = r * math.sin(theta)
+            return dlat_km / KM_PER_DEG_LAT, dlon_km / km_per_deg_lon
+
+        def far_enough(new_lat_deg, new_lon_deg, placed_list, km_per_deg_lon: float, min_sep: float):
+            for (lat_deg, lon_deg) in placed_list:
+                dlat_km = (new_lat_deg - lat_deg) * KM_PER_DEG_LAT
+                dlon_km = (new_lon_deg - lon_deg) * km_per_deg_lon
+                if (dlat_km * dlat_km + dlon_km * dlon_km) < (min_sep * min_sep):
+                    return False
+            return True
+
+        # --- 分组与位置生成 ---
+        red_ids = [sid for sid in self._jsbsims.keys() if sid.startswith('A')]
+        blue_ids = [sid for sid in self._jsbsims.keys() if sid.startswith('B')]
+        other_ids = [sid for sid in self._jsbsims.keys() if not (sid.startswith('A') or sid.startswith('B'))]
+
+        def place_team(team_ids, base_lat_deg, base_lon_deg, km_per_deg_lon, R_km, min_sep):
+            placed = []
+            for _ in team_ids:
+                attempts = 0
+                cur_min_sep = min_sep
+                while True:
+                    attempts += 1
+                    off_lat_deg, off_lon_deg = sample_offset_deg(R_km, km_per_deg_lon)
+                    cand_lat = base_lat_deg + off_lat_deg
+                    cand_lon = base_lon_deg + off_lon_deg
+                    if far_enough(cand_lat, cand_lon, placed, km_per_deg_lon, cur_min_sep):
+                        placed.append((cand_lat, cand_lon))
+                        break
+                    if attempts >= 2000:
+                        cur_min_sep *= 0.9
+                        attempts = 0
+            return placed
+
+        red_positions = place_team(red_ids, red_base_lat_deg, red_base_lon_deg, km_per_deg_lon_red, inner_radius_km,
+                                   min_sep_km)
+        blue_positions = place_team(blue_ids, blue_base_lat_deg, blue_base_lon_deg, km_per_deg_lon_blue,
+                                    inner_radius_km, min_sep_km)
+
+        # --- 状态回填 (重点修改：高度 -> 速度) ---
+
+        # 红队初始化
+        for idx, sid in enumerate(red_ids):
+            sim = self._jsbsims[sid]
+
+            # 1. 随机高度 (5000 - 10000米)
+            altitude_m = random.randint(5000, 10000)
+
+            # 2. 随机马赫数 (0.6 - 0.9)
+            # 解释：这是亚音速到跨音速的区间，飞机在这个区间升力足够且不易解体
+            if altitude_m > 8000:
+                # 高空：需要更快一点来保持升力 (0.7 - 0.95)
+                target_mach = random.uniform(0.7, 0.95)
+            else:
+                # 中低空：空气稠密，慢一点没事 (0.6 - 0.9)
+                target_mach = random.uniform(0.6, 0.9)
+
+            # 3. 根据高度和马赫数，算出匹配的真速 (m/s)
+            speed_mps = get_speed_from_mach(altitude_m, target_mach)
+
+            # 4. 航向
+            # heading_noise = random.uniform(-30, 30)
+            heading_noise = random.uniform(0, 360)
+
+            heading_deg = (red_ideal_heading + heading_noise) % 360
+
+            lat_deg, lon_deg = red_positions[idx]
+            sim.reload({
+                "ic_long_gc_deg": lon_deg,
+                "ic_lat_geod_deg": lat_deg,
+                "ic_h_sl_ft": altitude_m * FT_PER_METER,
+                "ic_psi_true_deg": heading_deg,
+                "ic_u_fps": speed_mps * FT_PER_METER,  # 注意单位转换
+            })
+
+        # 蓝队初始化
+        for idx, sid in enumerate(blue_ids):
+            sim = self._jsbsims[sid]
+
+            # 1. 随机高度
+            altitude_m = random.randint(5000, 10000)
+
+            # 2. 随机马赫数 (保持一致的物理区间)
+            target_mach = random.uniform(0.6, 0.9)
+
+            # 3. 算出真速
+            speed_mps = get_speed_from_mach(altitude_m, target_mach)
+
+            # 4. 航向
+            # heading_noise = random.uniform(-30, 30)
+            heading_noise = random.uniform(0, 360)
+
+            heading_deg = (blue_ideal_heading) % 360
+
+            lat_deg, lon_deg = blue_positions[idx]
+            sim.reload({
+                "ic_long_gc_deg": lon_deg,
+                "ic_lat_geod_deg": lat_deg,
+                "ic_h_sl_ft": altitude_m * FT_PER_METER,
+                "ic_psi_true_deg": heading_deg,
+                "ic_u_fps": speed_mps * FT_PER_METER,
+            })
+
+        for sid in other_ids:
+            raise ValueError(f"Unsupported sim_id prefix for {sid}. Use 'A' or 'B'.")
+
+        self._tempsims.clear()
     def normal_reset_simulators(self):
         # Assign new initial condition here!
         for sim in self._jsbsims.values():
             sim.reload()
         self._tempsims.clear()
+        # self.new_random_reset_simulators()
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
         """Run one timestep of the environment's dynamics. When end of
         episode is reached, you are responsible for calling `reset()`
@@ -160,6 +335,8 @@ class MultipleCombatEnv(BaseEnv):
         obs = self.get_obs()
         share_obs = self.get_state()
 
+        self._record_step_metrics(info)
+
         rewards = {}
         for agent_id in self.agents.keys():
             reward, info = self.task.get_reward(self, agent_id, info)
@@ -177,3 +354,326 @@ class MultipleCombatEnv(BaseEnv):
             dones[agent_id] = [done]
 
         return self._pack(obs), self._pack(share_obs), self._pack(rewards), self._pack(dones), info
+
+    def _init_episode_metrics(self):
+        self.episode_metrics = {
+            "step": [],
+            "per_agent": {},
+            "team": {
+                "ego": {
+                    "alive_count": [],
+                    "mean_speed": [],
+                    "mean_specific_energy": [],
+                    "mean_geometry_score": [],
+                    "mean_favorable_geometry": [],
+                    "mean_wez_advantage": [],
+                    "mean_wez_dominance": [],
+                },
+                "enm": {
+                    "alive_count": [],
+                    "mean_speed": [],
+                    "mean_specific_energy": [],
+                    "mean_geometry_score": [],
+                    "mean_favorable_geometry": [],
+                    "mean_wez_advantage": [],
+                    "mean_wez_dominance": [],
+                }
+            }
+        }
+
+        for agent_id in self.agents.keys():
+            self.episode_metrics["per_agent"][agent_id] = {
+                "speed": [],
+                "specific_energy": [],
+                "geometry_score": [],
+                "favorable_geometry": [],
+                "wez_advantage": [],
+                "wez_dominance": [],
+            }
+
+    # def _is_in_wez(self, attacker_id, target_id):
+    #     """
+    #     TODO: 按你的环境改这里
+    #     返回 bool: attacker 是否对 target 形成 WEZ 优势
+    #     这里我不给你乱写，因为这部分最依赖你的导弹/雷达/发射逻辑
+    #
+    #     你可以先用一个临时近似版本：
+    #     例如：距离 < 某阈值 且 AO/TA 满足条件
+    #     """
+    #     raise NotImplementedError(
+    #         f"_is_in_wez() 需要按你的 WEZ 判定逻辑适配, attacker={attacker_id}, target={target_id}"
+    #     )
+
+    # =========================
+    # 3) 通用辅助函数
+    # =========================
+    def _safe_mean(self, values):
+        return float(np.mean(values)) if len(values) > 0 else 0.0
+
+    def _safe_last(self, values):
+        return float(values[-1]) if len(values) > 0 else 0.0
+
+    def _select_reference_enemy(self, agent, enemies, mode="nearest"):
+        """
+        给某个 agent 选一个参考敌机，用来算 AO/TA 几何指标
+        默认用最近敌机
+        """
+        alive_enemies = [enm for enm in enemies if enm.is_alive]
+        if len(alive_enemies) == 0:
+            return None
+
+        if mode == "nearest":
+            my_pos = agent.get_position()
+            dists = []
+            for enm in alive_enemies:
+                enm_pos = enm.get_position()
+                d = np.linalg.norm(my_pos - enm_pos)
+                dists.append((d, enm))
+            dists.sort(key=lambda x: x[0])
+            return dists[0][1]
+
+        # 你后面也可以扩展：
+        # mode == "assigned_target"
+        # mode == "most_threatening"
+        return alive_enemies[0]
+
+    def _compute_geometry_against_enemy(self, agent, enm):
+        """
+        返回:
+            geometry_score: float
+            favorable_geometry: float(0/1)
+            ao: float
+            ta: float
+            r: float
+        依赖你现有的 get_AO_TA_R()
+        """
+        pos = agent.get_position()
+        vel = agent.get_velocity()
+        enm_pos = enm.get_position()
+        enm_vel = enm.get_velocity()
+
+        ego_feature = np.concatenate([pos, vel])
+        enm_feature = np.concatenate([enm_pos, enm_vel])
+
+        # 这里假设你已经有这个函数
+        ao, ta, r = get_AO_TA_R(ego_feature, enm_feature)
+
+        # AO 越小越好, TA 越大越好
+        s_ao = (1.0 + np.cos(ao)) / 2.0
+        s_ta = (1.0 - np.cos(ta)) / 2.0
+        geometry_score = 0.5 * s_ao + 0.5 * s_ta
+
+        ao_thr = np.deg2rad(30.0)
+        ta_thr = np.deg2rad(120.0)
+        favorable_geometry = float((ao < ao_thr) and (ta > ta_thr))
+
+        return float(geometry_score), float(favorable_geometry), float(ao), float(ta), float(r)
+
+    def _compute_agent_wez_metrics(self, agent_id, enemy_ids):
+        """
+        单机 WEZ 指标:
+        - self_in_wez: 我能否打任一敌机
+        - opp_in_wez:  任一敌机能否打我
+        - wez_advantage: 我能打人且别人不能打我
+        - wez_dominance: self_in_wez - opp_in_wez
+        """
+        alive_enemy_ids = [eid for eid in enemy_ids if self._is_alive(eid)]
+        if len(alive_enemy_ids) == 0:
+            return 0.0, 0.0, 0.0, 0.0
+
+        self_in_wez = 0.0
+        opp_in_wez = 0.0
+
+        for eid in alive_enemy_ids:
+            if self._is_in_wez(agent_id, eid):
+                self_in_wez = 1.0
+            if self._is_in_wez(eid, agent_id):
+                opp_in_wez = 1.0
+
+        wez_advantage = float((self_in_wez == 1.0) and (opp_in_wez == 0.0))
+        wez_dominance = float(self_in_wez - opp_in_wez)
+        return float(self_in_wez), float(opp_in_wez), wez_advantage, wez_dominance
+
+    def _compute_specific_energy(self, agent):
+        """
+        比能/能量高度:
+            h_e = h + V^2 / (2g)
+
+        假设位置是 NED:
+            down 为正 -> 高度 h = -down
+        """
+        pos = agent.get_position()
+        vel = agent.get_velocity()
+
+        v = float(np.linalg.norm(vel))
+        h = float(pos[2])  # 如果你的 z 不是 down，这里自己改
+        he = float(h + v * v / (2.0 * 9.81))
+        return v, he
+
+    # =========================
+    # 4) 每一步统计：核心函数
+    # =========================
+    def _record_step_metrics(self, info):
+        """
+        这个函数放在:
+            self.task.step(self)
+            obs = self.get_obs()
+            share_obs = self.get_state()
+        之后
+        """
+
+        if not hasattr(self, "episode_metrics") or self.episode_metrics is None:
+            self._init_episode_metrics()
+
+        self.episode_metrics["step"].append(int(self.current_step))
+
+        # ---------- 先记录每架飞机 ----------
+        for agent_id in self.agents.keys():
+            # 死亡 agent 不记当前 step
+            agent = self.agents[agent_id]
+            if not agent.is_alive:
+                continue
+
+            # 速度 / 比能
+            speed, he = self._compute_specific_energy(agent)
+            self.episode_metrics["per_agent"][agent_id]["speed"].append(speed)
+            self.episode_metrics["per_agent"][agent_id]["specific_energy"].append(he)
+
+            # 选择敌方集合
+            if agent_id in self.ego_ids:
+                enemy_ids = self.enm_ids
+            else:
+                enemy_ids = self.ego_ids
+
+            # 几何指标：相对于一个参考敌机
+            ref_enemy = self._select_reference_enemy(agent, agent.enemies, mode="nearest")
+            if ref_enemy is None:
+                geometry_score = 0.0
+                favorable_geometry = 0.0
+                ao = 0.0
+                ta = 0.0
+                r = 0.0
+            else:
+                geometry_score, favorable_geometry, ao, ta, r = self._compute_geometry_against_enemy(
+                    agent, ref_enemy
+                )
+
+            self.episode_metrics["per_agent"][agent_id]["geometry_score"].append(geometry_score)
+            self.episode_metrics["per_agent"][agent_id]["favorable_geometry"].append(favorable_geometry)
+
+            # WEZ 指标：对任一敌机
+            # _, _, wez_advantage, wez_dominance = self._compute_agent_wez_metrics(agent_id, enemy_ids)
+            # self.episode_metrics["per_agent"][agent_id]["wez_advantage"].append(wez_advantage)
+            # self.episode_metrics["per_agent"][agent_id]["wez_dominance"].append(wez_dominance)
+
+        # ---------- 再做 team 聚合 ----------
+        self._aggregate_team_step_metrics(side="ego")
+        self._aggregate_team_step_metrics(side="enm")
+
+        # ---------- 可选：把本 step 的 team 指标塞进 info ----------
+        info["step_metrics"] = {
+            "ego_mean_speed": self._safe_last(self.episode_metrics["team"]["ego"]["mean_speed"]),
+            "ego_mean_specific_energy": self._safe_last(self.episode_metrics["team"]["ego"]["mean_specific_energy"]),
+            "ego_mean_geometry_score": self._safe_last(self.episode_metrics["team"]["ego"]["mean_geometry_score"]),
+            "ego_mean_wez_advantage": self._safe_last(self.episode_metrics["team"]["ego"]["mean_wez_advantage"]),
+            "ego_mean_wez_dominance": self._safe_last(self.episode_metrics["team"]["ego"]["mean_wez_dominance"]),
+
+            "enm_mean_speed": self._safe_last(self.episode_metrics["team"]["enm"]["mean_speed"]),
+            "enm_mean_specific_energy": self._safe_last(self.episode_metrics["team"]["enm"]["mean_specific_energy"]),
+            "enm_mean_geometry_score": self._safe_last(self.episode_metrics["team"]["enm"]["mean_geometry_score"]),
+            "enm_mean_wez_advantage": self._safe_last(self.episode_metrics["team"]["enm"]["mean_wez_advantage"]),
+            "enm_mean_wez_dominance": self._safe_last(self.episode_metrics["team"]["enm"]["mean_wez_dominance"]),
+        }
+
+    def _aggregate_team_step_metrics(self, side="ego"):
+        if side == "ego":
+            side_agent_ids = self.ego_ids
+        else:
+            side_agent_ids = self.enm_ids
+
+        alive_ids = [aid for aid in side_agent_ids if self.agents[aid].is_alive]
+
+        team_buf = self.episode_metrics["team"][side]
+        team_buf["alive_count"].append(len(alive_ids))
+
+        if len(alive_ids) == 0:
+            team_buf["mean_speed"].append(0.0)
+            team_buf["mean_specific_energy"].append(0.0)
+            team_buf["mean_geometry_score"].append(0.0)
+            team_buf["mean_favorable_geometry"].append(0.0)
+            team_buf["mean_wez_advantage"].append(0.0)
+            team_buf["mean_wez_dominance"].append(0.0)
+            return
+
+        speeds = []
+        hes = []
+        geos = []
+        favs = []
+        wez_advs = []
+        wez_doms = []
+
+        for aid in alive_ids:
+            agent_buf = self.episode_metrics["per_agent"][aid]
+            speeds.append(self._safe_last(agent_buf["speed"]))
+            hes.append(self._safe_last(agent_buf["specific_energy"]))
+            geos.append(self._safe_last(agent_buf["geometry_score"]))
+            favs.append(self._safe_last(agent_buf["favorable_geometry"]))
+            wez_advs.append(self._safe_last(agent_buf["wez_advantage"]))
+            wez_doms.append(self._safe_last(agent_buf["wez_dominance"]))
+
+        team_buf["mean_speed"].append(self._safe_mean(speeds))
+        team_buf["mean_specific_energy"].append(self._safe_mean(hes))
+        team_buf["mean_geometry_score"].append(self._safe_mean(geos))
+        team_buf["mean_favorable_geometry"].append(self._safe_mean(favs))
+        team_buf["mean_wez_advantage"].append(self._safe_mean(wez_advs))
+        team_buf["mean_wez_dominance"].append(self._safe_mean(wez_doms))
+
+    # =========================
+    # 5) episode 结束时汇总
+    # =========================
+    def _finalize_episode_metrics(self):
+        result = {
+            "per_agent": {},
+            "team": {
+                "ego": {},
+                "enm": {},
+            }
+        }
+
+        # --- per-agent 汇总 ---
+        for agent_id, buf in self.episode_metrics["per_agent"].items():
+            result["per_agent"][agent_id] = {
+                "mean_speed": self._safe_mean(buf["speed"]),
+                "end_speed": self._safe_last(buf["speed"]),
+
+                "mean_specific_energy": self._safe_mean(buf["specific_energy"]),
+                "end_specific_energy": self._safe_last(buf["specific_energy"]),
+
+                "geometry_score_mean": self._safe_mean(buf["geometry_score"]),
+                "favorable_geometry_ratio": self._safe_mean(buf["favorable_geometry"]),
+
+                "wez_advantage_ratio": self._safe_mean(buf["wez_advantage"]),
+                "wez_dominance_mean": self._safe_mean(buf["wez_dominance"]),
+            }
+
+        # --- team 汇总 ---
+        for side in ["ego", "enm"]:
+            tbuf = self.episode_metrics["team"][side]
+            result["team"][side] = {
+                "alive_count_mean": self._safe_mean(tbuf["alive_count"]),
+                "alive_count_end": self._safe_last(tbuf["alive_count"]),
+
+                "mean_speed_over_time": self._safe_mean(tbuf["mean_speed"]),
+                "end_mean_speed": self._safe_last(tbuf["mean_speed"]),
+
+                "mean_specific_energy_over_time": self._safe_mean(tbuf["mean_specific_energy"]),
+                "end_mean_specific_energy": self._safe_last(tbuf["mean_specific_energy"]),
+
+                "mean_geometry_score_over_time": self._safe_mean(tbuf["mean_geometry_score"]),
+                "mean_favorable_geometry_ratio": self._safe_mean(tbuf["mean_favorable_geometry"]),
+
+                "mean_wez_advantage_ratio": self._safe_mean(tbuf["mean_wez_advantage"]),
+                "mean_wez_dominance_over_time": self._safe_mean(tbuf["mean_wez_dominance"]),
+            }
+
+        return result

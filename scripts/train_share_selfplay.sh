@@ -1,7 +1,7 @@
 #!/bin/sh
 
 env="MultipleCombat"
-scenario="2v2/NoWeapon/HierarchySelfplay"
+scenario="2v2/ShootMissile/HierarchySelfplay"
 algo="mappo"
 exp="v1"
 seed=0

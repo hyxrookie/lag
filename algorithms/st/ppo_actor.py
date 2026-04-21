@@ -30,8 +30,8 @@ class PPOActorST(nn.Module):
         self.memory_length = getattr(args, 'memory_length', 64)
 
         self.dropout = getattr(args, 'dropout', 0.1)
-        self.ego_dim = getattr(args, 'ego_dim', 9)
-        self.relative_dim = getattr(args, 'relative_dim', 6)
+        self.ego_dim = getattr(args, 'ego_dim', 14)
+        self.relative_dim = getattr(args, 'relative_dim', 7)
         self.num_friendly = getattr(args, 'num_friendly', 1)
         self.num_enemy = getattr(args, 'num_enemy', 2)
         self.num_missiles = getattr(args, 'num_missiles', 1)

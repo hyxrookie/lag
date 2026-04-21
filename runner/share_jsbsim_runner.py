@@ -74,7 +74,16 @@ class ShareJSBSimRunner(Runner):
         start = time.time()
         self.total_num_steps = 0
         episodes = self.num_env_steps // self.buffer_size // self.n_rollout_threads
-
+        import csv
+        self.csv_file_path = f"{self.run_dir}/my_training_logs.csv" if hasattr(self,
+                                                                               'run_dir') else "my_training_logs.csv"
+        self.csv_headers = [
+            'episode', 'total_num_steps', 'value_loss', 'policy_loss',
+            'policy_entropy_loss', 'average_episode_rewards'
+        ]
+        with open(self.csv_file_path, mode='w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=self.csv_headers)
+            writer.writeheader()
         for episode in range(episodes):
 
             for step in range(self.buffer_size):
@@ -116,7 +125,18 @@ class ShareJSBSimRunner(Runner):
                 train_infos["average_episode_rewards"] = self.buffer.rewards.sum() / (self.buffer.masks == False).sum()
                 logging.info("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
                 self.log_info(train_infos, self.total_num_steps)
-
+                row_data = {
+                    'episode': episode,
+                    'total_num_steps': self.total_num_steps,
+                    # 从 train_infos 字典中安全获取 loss，如果没有就填 0
+                    'value_loss': train_infos.get('value_loss', 0),
+                    'policy_loss': train_infos.get('policy_loss', 0),
+                    'policy_entropy_loss': train_infos.get('policy_entropy_loss', 0),
+                    'average_episode_rewards': train_infos.get('average_episode_rewards', 0)
+                }
+                with open(self.csv_file_path, mode='a', newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=self.csv_headers)
+                    writer.writerow(row_data)
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
                 self.eval(self.total_num_steps)

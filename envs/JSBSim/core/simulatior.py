@@ -226,6 +226,7 @@ class AircraftSimulator(BaseSimulator):
             self._update_properties()
             return result
         else:
+            self.bloods = 0
             return True
 
     def close(self):
