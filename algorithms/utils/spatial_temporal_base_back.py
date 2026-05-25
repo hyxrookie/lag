@@ -91,12 +91,6 @@ class SpatialTemporalBase(nn.Module):
                 num_heads=num_spatial_heads,
                 dropout=dropout
             )
-            self.agent_fusion_mlp = nn.Sequential(
-                nn.Linear(num_agents * embed_dim, hidden_size),
-                nn.ReLU(),
-                nn.LayerNorm(hidden_size),
-                nn.Linear(hidden_size, embed_dim)
-            )
             
         # 5. 时间注意力 (GTrXL)
         self.temporal_attn = GTrXL(
@@ -194,6 +188,7 @@ class SpatialTemporalBase(nn.Module):
         # 3. 时间序列特征提取 (Temporal Attention - GTrXL)
         # ============================================================
         batch_size, n_layers, flat_dim = rnn_states.shape
+
         # A. Reshape 恢复 Memory 维度
         # [Batch, Layers, Flat_Dim] -> [Batch, Layers, Mem_Len, Hidden]
         rnn_states_view = rnn_states.view(batch_size, n_layers, self.memory_length, self.embed_dim)
@@ -201,12 +196,11 @@ class SpatialTemporalBase(nn.Module):
         # B. Permute 置换维度以适应 GTrXL 内部逻辑
         # GTrXL 期待 memory 格式为 [Layers, Batch, Mem_Len, Hidden]
         rnn_states_view = rnn_states_view.permute(1, 0, 2, 3)
+
         # C. 执行 GTrXL 时间注意力
         # features: [Batch, embed_dim]
         # new_rnn_states: [Layers, Batch, Mem_Len, Hidden]
-        features, new_rnn_states = self.temporal_attn(x_spatial, rnn_states, masks)
-
-        # print("rnn_states after", new_rnn_states.shape)
+        features, new_rnn_states = self.temporal_attn(x_spatial, rnn_states_view, masks)
 
         # D. 输出还原 (Layers First -> Batch First -> Flattened)
         # [Layers, Batch, Mem_Len, Embed_Dim] -> [Batch, Layers, Mem_Len, Embed_Dim]

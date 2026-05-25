@@ -33,8 +33,8 @@ render = True
 ego_policy_index = 420
 enm_policy_index = 200
 episode_rewards = 0
-ego_run_dir = "/mnt/d/MyProject/lag/scripts/results/MultipleCombat/2v2//ShootMissile/MyHierarchySelfplay/mappo/v1/run6/"
-enm_run_dir = "/mnt/d/MyProject/lag/scripts/results/MultipleCombat/2v2/ShootMissile/MyHierarchySelfplay/mappo/v1/run6/"
+ego_run_dir = "/mnt/d/MyProject/lag/scripts/results/MultipleCombat/2v2//ShootMissile/MyHierarchySelfplay/mappo/v1/run8/"
+enm_run_dir = "/mnt/d/MyProject/lag/scripts/results/MultipleCombat/2v2/ShootMissile/MyHierarchySelfplay/mappo/v1/run8/"
 experiment_name = ego_run_dir.split('/')[-4]
 env = MultipleCombatEnv(scenario_name)
 env.seed(0)

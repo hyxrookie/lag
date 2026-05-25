@@ -49,10 +49,308 @@ class MultipleCombatEnv(BaseEnv):
         self._init_episode_metrics()
         return self._pack(obs), self._pack(share_obs)
 
-
     def reset_simulators(self):
-        # self.normal_reset_simulators()
-        self.random_reset_simulators()
+        seed = getattr(self, "_reset_seed", None)
+        swap_red_blue = getattr(self, "_reset_swap_red_blue", False)
+        reset_mode = getattr(self, "_reset_mode", "symmetric")
+
+        if reset_mode == "normal":
+            self.my_random_reset_simulators(seed=seed)
+        elif reset_mode == "symmetric":
+            self.my_random_reset_simulators(
+                seed=seed,
+                swap_red_blue=swap_red_blue,
+                symmetric_pairing=True,
+            )
+        else:
+            raise ValueError(f"Unknown reset_mode: {reset_mode}")
+
+    def set_reset_config(
+            self,
+            seed=None,
+            swap_red_blue=False,
+            reset_mode="symmetric",
+    ):
+        """
+        设置下一次 reset 使用的初始化参数。
+
+        Args:
+            seed: 当前 episode 的随机种子。
+            swap_red_blue: 是否红蓝初始态势互换。
+            reset_mode:
+                "normal"     普通随机初始化
+                "symmetric"  对称随机初始化
+        """
+        self._reset_seed = seed
+        self._reset_swap_red_blue = swap_red_blue
+        self._reset_mode = reset_mode
+    def my_random_reset_simulators(
+            self,
+            seed=None,
+            swap_red_blue=False,
+            symmetric_pairing=True,
+            center_lon_deg=120.0,
+            center_lat_deg=60.0,
+            min_team_separation_km=10.0,
+            max_team_separation_km=40.0,
+            inner_radius_km=5.0,
+            altitude_range_m=(5000, 10000),
+            speed_range_mps=(200, 300),
+            heading_jitter_deg=20.0,
+    ):
+        """
+        随机但尽量公平的红蓝双方初始化。
+
+        特点：
+        1. 红蓝双方关于战场中心近似对称；
+        2. 支持 seed，保证可复现；
+        3. 支持 swap_red_blue，用于红蓝互换评估；
+        4. 支持成对镜像散布，减少初始位置偏置；
+        5. 默认双方大致相向飞行，避免一方天然占优。
+
+        Args:
+            seed: 随机种子。相同 seed + 相同参数会生成相同初始场景。
+            swap_red_blue: 是否交换红蓝双方初始态势。
+            symmetric_pairing: 是否按 A1-B1, A2-B2 进行镜像初始化。
+            center_lon_deg: 战场中心经度。
+            center_lat_deg: 战场中心纬度。
+            min_team_separation_km: 红蓝中心点最小间距。
+            max_team_separation_km: 红蓝中心点最大间距。
+            inner_radius_km: 队伍内部散布半径。
+            altitude_range_m: 高度范围，单位 m。
+            speed_range_mps: 速度范围，单位 m/s。
+            heading_jitter_deg: 初始航向扰动，单位 deg。
+        """
+
+        # =========================
+        # 1. 常量与局部随机数生成器
+        # =========================
+        KM_PER_DEG_LAT = 111.132
+        KM_PER_DEG_LON_AT_EQ = 111.320
+        FT_PER_METER = 3.28084
+
+        rng = random.Random(seed)
+
+        # 当前纬度附近的经度换算
+        km_per_deg_lon_center = KM_PER_DEG_LON_AT_EQ * math.cos(math.radians(center_lat_deg))
+        if abs(km_per_deg_lon_center) < 1e-6:
+            raise ValueError("center_lat_deg too close to poles, longitude conversion becomes unstable.")
+
+        def local_km_to_lonlat(x_km, y_km):
+            """
+            局部平面坐标转经纬度。
+            x_km: 东向偏移，单位 km
+            y_km: 北向偏移，单位 km
+            """
+            lon = center_lon_deg + x_km / km_per_deg_lon_center
+            lat = center_lat_deg + y_km / KM_PER_DEG_LAT
+            return lon, lat
+
+        def wrap_heading_deg(deg):
+            return deg % 360.0
+
+        def heading_from_vector_deg(dx_km, dy_km):
+            """
+            根据局部平面向量计算 JSBSim 常用航向角：
+            0 deg = 北，90 deg = 东。
+            dx_km: 东向
+            dy_km: 北向
+            """
+            return wrap_heading_deg(math.degrees(math.atan2(dx_km, dy_km)))
+
+        def sample_uniform_disk(radius_km):
+            """
+            在圆盘内均匀采样一个点。
+            注意不能直接 r uniform，否则会让点集中在中心。
+            """
+            theta = rng.uniform(0.0, 2.0 * math.pi)
+            r = radius_km * math.sqrt(rng.uniform(0.0, 1.0))
+            x = r * math.sin(theta)  # 东向
+            y = r * math.cos(theta)  # 北向
+            return x, y
+
+        # =========================
+        # 2. 获取红蓝飞机 id
+        # =========================
+        red_ids = sorted([sim_id for sim_id in self._jsbsims.keys() if sim_id.startswith("A")])
+        blue_ids = sorted([sim_id for sim_id in self._jsbsims.keys() if sim_id.startswith("B")])
+
+        if len(red_ids) == 0 or len(blue_ids) == 0:
+            raise ValueError("No red or blue simulators found. Red ids should start with 'A', blue ids with 'B'.")
+
+        # =========================
+        # 3. 随机生成红蓝中心点，关于战场中心对称
+        # =========================
+        # 红蓝中心距离
+        team_sep_km = rng.uniform(min_team_separation_km, max_team_separation_km)
+
+        # 红蓝连线方向，局部坐标中 angle=0 表示北向
+        line_angle_rad = rng.uniform(0.0, 2.0 * math.pi)
+
+        # 从红方中心指向蓝方中心的单位向量
+        ux = math.sin(line_angle_rad)  # 东向
+        uy = math.cos(line_angle_rad)  # 北向
+
+        half_sep = team_sep_km / 2.0
+
+        canonical_red_center = (-half_sep * ux, -half_sep * uy)
+        canonical_blue_center = (half_sep * ux, half_sep * uy)
+
+        # 红方默认朝向蓝方，蓝方默认朝向红方
+        red_base_heading = heading_from_vector_deg(
+            canonical_blue_center[0] - canonical_red_center[0],
+            canonical_blue_center[1] - canonical_red_center[1],
+        )
+        blue_base_heading = wrap_heading_deg(red_base_heading + 180.0)
+
+        # =========================
+        # 4. 生成 canonical 初始状态
+        # =========================
+        # canonical 表示还没有做红蓝互换之前的初始状态
+        canonical_states = {}
+
+        if symmetric_pairing:
+            # 成对镜像初始化：A_i 的内部偏移为 offset，B_i 为 -offset
+            pair_num = min(len(red_ids), len(blue_ids))
+
+            for i in range(pair_num):
+                red_id = red_ids[i]
+                blue_id = blue_ids[i]
+
+                offset_x, offset_y = sample_uniform_disk(inner_radius_km)
+
+                # 高度和速度也可以做近似对称：同一对飞机使用相同基础值
+                altitude_m = rng.uniform(*altitude_range_m)
+                speed_mps = rng.uniform(*speed_range_mps)
+
+                # 航向扰动镜像：红方 +jitter，蓝方 -jitter
+                jitter = rng.uniform(-heading_jitter_deg, heading_jitter_deg)
+
+                red_x = canonical_red_center[0] + offset_x
+                red_y = canonical_red_center[1] + offset_y
+                blue_x = canonical_blue_center[0] - offset_x
+                blue_y = canonical_blue_center[1] - offset_y
+
+                red_lon, red_lat = local_km_to_lonlat(red_x, red_y)
+                blue_lon, blue_lat = local_km_to_lonlat(blue_x, blue_y)
+
+                canonical_states[red_id] = {
+                    "lon": red_lon,
+                    "lat": red_lat,
+                    "altitude_m": altitude_m,
+                    "heading_deg": wrap_heading_deg(red_base_heading + jitter),
+                    "speed_mps": speed_mps,
+                }
+
+                canonical_states[blue_id] = {
+                    "lon": blue_lon,
+                    "lat": blue_lat,
+                    "altitude_m": altitude_m,
+                    "heading_deg": wrap_heading_deg(blue_base_heading - jitter),
+                    "speed_mps": speed_mps,
+                }
+
+            # 如果红蓝数量不一致，剩余飞机单独随机生成
+            for red_id in red_ids[pair_num:]:
+                offset_x, offset_y = sample_uniform_disk(inner_radius_km)
+                x = canonical_red_center[0] + offset_x
+                y = canonical_red_center[1] + offset_y
+                lon, lat = local_km_to_lonlat(x, y)
+
+                canonical_states[red_id] = {
+                    "lon": lon,
+                    "lat": lat,
+                    "altitude_m": rng.uniform(*altitude_range_m),
+                    "heading_deg": wrap_heading_deg(
+                        red_base_heading + rng.uniform(-heading_jitter_deg, heading_jitter_deg)),
+                    "speed_mps": rng.uniform(*speed_range_mps),
+                }
+
+            for blue_id in blue_ids[pair_num:]:
+                offset_x, offset_y = sample_uniform_disk(inner_radius_km)
+                x = canonical_blue_center[0] + offset_x
+                y = canonical_blue_center[1] + offset_y
+                lon, lat = local_km_to_lonlat(x, y)
+
+                canonical_states[blue_id] = {
+                    "lon": lon,
+                    "lat": lat,
+                    "altitude_m": rng.uniform(*altitude_range_m),
+                    "heading_deg": wrap_heading_deg(
+                        blue_base_heading + rng.uniform(-heading_jitter_deg, heading_jitter_deg)),
+                    "speed_mps": rng.uniform(*speed_range_mps),
+                }
+
+        else:
+            # 非成对模式：红蓝仍然关于中心对称，但内部散布独立随机
+            for red_id in red_ids:
+                offset_x, offset_y = sample_uniform_disk(inner_radius_km)
+                x = canonical_red_center[0] + offset_x
+                y = canonical_red_center[1] + offset_y
+                lon, lat = local_km_to_lonlat(x, y)
+
+                canonical_states[red_id] = {
+                    "lon": lon,
+                    "lat": lat,
+                    "altitude_m": rng.uniform(*altitude_range_m),
+                    "heading_deg": wrap_heading_deg(
+                        red_base_heading + rng.uniform(-heading_jitter_deg, heading_jitter_deg)),
+                    "speed_mps": rng.uniform(*speed_range_mps),
+                }
+
+            for blue_id in blue_ids:
+                offset_x, offset_y = sample_uniform_disk(inner_radius_km)
+                x = canonical_blue_center[0] + offset_x
+                y = canonical_blue_center[1] + offset_y
+                lon, lat = local_km_to_lonlat(x, y)
+
+                canonical_states[blue_id] = {
+                    "lon": lon,
+                    "lat": lat,
+                    "altitude_m": rng.uniform(*altitude_range_m),
+                    "heading_deg": wrap_heading_deg(
+                        blue_base_heading + rng.uniform(-heading_jitter_deg, heading_jitter_deg)),
+                    "speed_mps": rng.uniform(*speed_range_mps),
+                }
+
+        # =========================
+        # 5. 可选红蓝互换
+        # =========================
+        # swap_red_blue=True 时：
+        # A_i 使用 B_i 的初始位置和航向；
+        # B_i 使用 A_i 的初始位置和航向。
+        #
+        # 这样可以检验模型是否存在红蓝阵营偏置。
+        final_states = dict(canonical_states)
+
+        if swap_red_blue:
+            pair_num = min(len(red_ids), len(blue_ids))
+
+            for i in range(pair_num):
+                red_id = red_ids[i]
+                blue_id = blue_ids[i]
+
+                red_state = canonical_states[red_id]
+                blue_state = canonical_states[blue_id]
+
+                final_states[red_id] = blue_state
+                final_states[blue_id] = red_state
+
+        # =========================
+        # 6. 写入 JSBSim 初始条件
+        # =========================
+        for sim_id, sim in self._jsbsims.items():
+            state = final_states[sim_id]
+
+            sim.reload({
+                "ic_long_gc_deg": state["lon"],
+                "ic_lat_geod_deg": state["lat"],
+                "ic_h_sl_ft": state["altitude_m"] * FT_PER_METER,
+                "ic_psi_true_deg": state["heading_deg"],
+                "ic_u_fps": state["speed_mps"] * FT_PER_METER,
+            })
+
+        self._tempsims.clear()
     def random_reset_simulators(self):
         # --- 常量定义 ---
         KM_PER_DEG_LAT = 111.132  # 每度纬度对应的公里数 (近似值)

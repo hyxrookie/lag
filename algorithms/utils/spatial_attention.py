@@ -20,7 +20,7 @@ class SpatialAttention(nn.Module):
     采用 Pre-Norm 架构
     """
 
-    def __init__(self, embed_dim=128, num_heads=8, dropout=0.1):
+    def __init__(self, embed_dim=128, num_heads=2, dropout=0.1):
         super(SpatialAttention, self).__init__()
         assert embed_dim % num_heads == 0, "embed_dim必须能被num_heads整除"
 
@@ -38,41 +38,48 @@ class SpatialAttention(nn.Module):
         self.out_proj = nn.Linear(embed_dim, embed_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, entity_embeddings, mask=None):
+    def forward(self, entity_embeddings, mask=None, ego_query=True):
         batch_dims = entity_embeddings.shape[:-2]
         num_entities = entity_embeddings.shape[-2]
 
-        # ==========================================
-        # Pre-Norm 核心修改点 1：先进行 LayerNorm
-        # ==========================================
-        # 1. 保存原始的“我机”特征，用于最后的残差连接 (不经过LayerNorm)
-        ego_feature_raw = entity_embeddings[..., 0:1, :]
-
-        # 2. 对所有输入实体进行归一化
+        # Pre-Norm
         normed_embeddings = self.layer_norm(entity_embeddings)
+        ego_feature_raw = None
+        if ego_query:
+            # ==========================================
+            # Actor 模式：以我机为中心 (Ego-Centric)
+            # ==========================================
+            ego_feature_raw = entity_embeddings[..., 0:1, :]
+            Q = self.w_q(normed_embeddings[..., 0:1, :])
+            num_queries = 1
+        else:
+            # ==========================================
+            # Critic 模式：全局自注意力 (Full Self-Attention)
+            # ==========================================
+            Q = self.w_q(normed_embeddings)
+            num_queries = num_entities
 
-        # 3. 基于归一化后的特征生成 Q, K, V
-        # Query: 取归一化后的我机特征
-        ego_feature_norm = normed_embeddings[..., 0:1, :]
-        Q = self.w_q(ego_feature_norm)
-
-        # Key, Value: 取归一化后的所有实体特征
         K = self.w_k(normed_embeddings)
         V = self.w_v(normed_embeddings)
 
-        # ==========================================
-        # 后续注意力计算逻辑保持不变
-        # ==========================================
-        Q = Q.view(*batch_dims, 1, self.num_heads, self.head_dim).transpose(-3, -2)
+        Q = Q.view(*batch_dims, num_queries, self.num_heads, self.head_dim).transpose(-3, -2)
         K = K.view(*batch_dims, num_entities, self.num_heads, self.head_dim).transpose(-3, -2)
         V = V.view(*batch_dims, num_entities, self.num_heads, self.head_dim).transpose(-3, -2)
 
+        # QK^T 计算注意力分数
         scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)
 
         if mask is not None:
-            # 建议加上这个安全补丁，防止我机被意外 mask 导致全 -inf 报错 NaN
-            mask = mask.clone()  # 避免原地修改影响外部数据
-            mask[..., 0] = 1.0
+            original_mask = mask.clone()
+            mask = mask.clone()
+            if ego_query:
+                mask[..., 0] = 1.0  # 保护我机不被 mask
+            else:
+                # 全局模式下，mask 扩展为 [..., 1, 1, num_entities] 以屏蔽无效的 K
+                # 【防 NaN 补丁】：如果某个死机的 mask 全是 0，会导致 Softmax 产出 NaN。
+                # 我们强制给全 0 的 mask 赋予 1，让它算出数值。反正最后 Pooling 会把它彻底清零。
+                is_all_zero = (mask.sum(dim=-1, keepdim=True) == 0)
+                mask = mask.masked_fill(is_all_zero, 1.0)
 
             mask_expanded = mask.unsqueeze(-2).unsqueeze(-2)
             scores = scores.masked_fill(mask_expanded == 0, float('-inf'))
@@ -81,21 +88,29 @@ class SpatialAttention(nn.Module):
         attn_weights = self.dropout(attn_weights)
 
         attended = torch.matmul(attn_weights, V)
-
         attended = attended.transpose(-3, -2).contiguous()
-        attended = attended.view(*batch_dims, 1, self.embed_dim)
+        attended = attended.view(*batch_dims, num_queries, self.embed_dim)
 
         output = self.out_proj(attended)
         output = self.dropout(output)
 
-        # ==========================================
-        # Pre-Norm 核心修改点 2：纯残差连接
-        # ==========================================
-        # 直接与未归一化的原始 ego_feature_raw 相加，外部不再包裹 LayerNorm
-        output = output + ego_feature_raw
+        if ego_query:
+            # Actor: 残差连接并去掉 Query 维度
+            output = output + ego_feature_raw
+            return output.squeeze(-2)  # [..., embed_dim]
+        else:
+            # Critic: 残差连接后，对所有实体特征进行均值池化 (Mean Pooling)
+            # 这样可以在不丢失实体交互细节的前提下，压缩成一个宏观向量
+            output = output + entity_embeddings
 
-        return output.squeeze(-2)
-
+            if mask is not None:
+                # Masked Mean Pooling: 确保死亡/无效的实体不参与均值计算
+                mask_float = original_mask.unsqueeze(-1).float()
+                sum_output = (output * mask_float).sum(dim=-2)
+                valid_count = mask_float.sum(dim=-2).clamp(min=1e-9)
+                return sum_output / valid_count
+            else:
+                return output.mean(dim=-2)  # [..., embed_dim]
     # def forward_critic(self, entity_embeddings, mask=None):
     #     """
     #     Critic 模式：所有实体作为Query (Self-Attention)，最后取平均

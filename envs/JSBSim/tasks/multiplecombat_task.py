@@ -9,6 +9,10 @@ from ..reward_functions.myreward.BVRAttackGeometryReward import BVRAttackGeometr
 from ..reward_functions.myreward.BVREvasionReward_315_Improved2 import BVREvasionReward_315_Improved2
 from ..reward_functions.myreward.BVRSpeedAltitudeEnergyReward_312 import BVRSpeedAltitudeEnergyReward_312
 from ..reward_functions.myreward.BVRZoneRangeReward import BVRZoneRangeReward
+from ..reward_functions.wvr.WVRAttackGeometryReward import WVRAttackGeometryReward
+from ..reward_functions.wvr.WVREvasionReward import WVREvasionReward
+from ..reward_functions.wvr.WVRSpeedAltitudeEnergyReward import WVRSpeedAltitudeEnergyReward
+from ..reward_functions.wvr.WVRZoneRangeReward import WVRZoneRangeReward
 from ..tasks import SingleCombatTask
 from ..core.catalog import Catalog as c
 from ..core.simulatior import MissileSimulator
@@ -192,10 +196,14 @@ class HierarchicalMultipleCombatShootTask(HierarchicalMultipleCombatTask):
             # DogdeAttackWindowReward(self.config),
             # ComputeClosenessReward(self.config),
             # FriendlyRangeReward(self.config),
-            BVRAttackGeometryReward(self.config),
-            BVREvasionReward_315_Improved2(self.config),
-            BVRSpeedAltitudeEnergyReward_312(self.config),
-            BVRZoneRangeReward(self.config),
+            # BVRAttackGeometryReward(self.config),
+            # BVREvasionReward_315_Improved2(self.config),
+            # BVRSpeedAltitudeEnergyReward_312(self.config),
+            # BVRZoneRangeReward(self.config),
+            WVRZoneRangeReward(self.config),
+            WVREvasionReward(self.config),
+            WVRSpeedAltitudeEnergyReward(self.config),
+            WVRAttackGeometryReward(self.config),
             EventDrivenReward(self.config),
             # VelocityReward(self.config),
             # MissileDodgeReward(self.config),
