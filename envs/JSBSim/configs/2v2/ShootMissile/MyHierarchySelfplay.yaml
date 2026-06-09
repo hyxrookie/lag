@@ -64,7 +64,7 @@ aircraft_configs: {
   }
 }
 max_attack_angle: 45        # unit: degree
-max_attack_distance: 10000  # unit: m
+max_attack_distance: 14000  # unit: m
 min_attack_interval: 125     # unit: step
 
 # (lontitude, latitude, altitude)

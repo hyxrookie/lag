@@ -91,7 +91,7 @@ class MultipleCombatEnv(BaseEnv):
             symmetric_pairing=True,
             center_lon_deg=120.0,
             center_lat_deg=60.0,
-            min_team_separation_km=10.0,
+            min_team_separation_km=20.0,
             max_team_separation_km=40.0,
             inner_radius_km=5.0,
             altitude_range_m=(5000, 10000),
